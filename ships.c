@@ -2692,7 +2692,7 @@ static void generator_diff(
         shuffle(ind, h+w, sizeof(*ind), rs);
         for (i = 0; i < sums_ex; i++) {
             if (ind[i] < h) rows[ind[i]] = -1;
-            else            cols[ind[i]] = -1;
+            else            cols[ind[i]-h] = -1;
         }
     }    
     
