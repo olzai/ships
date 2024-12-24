@@ -7,7 +7,7 @@ developed using the package of `Simon Tatham's Portable Puzzle
 Collection' (www.chiark.greenend.org.uk/~sgtatham/puzzles). This
 software is _not_ part of the `Collection'.
 
-[The Ships Game, version 1, 20241030]
+[The Ships Game, version 2, 20241224]
 
 File: ships.info,  Node: Top,  Up: (dir),  Next: Chapter 1
 
@@ -75,14 +75,16 @@ above the grid, respectively. The lengths of the ships to find are
 listed below the grid, in the line beginning with the word `ships'.
 There are as many ships as the lengths specified.
 
-The end cells of a ship are marked by _triangles_ that point along
-the ship axis in the directions away from the inner cells. The inner
-cells are marked by _squares_. In the special case of a one-cell ship,
-the cell is marked by a _rhombus_. A cell not occupied by a ship can
-be marked by a _dot_, but this is not required to solve the puzzle.
-To indicate that a cell is occupied by a ship, it can be temporarily
-filled with a _white background_; to solve the puzzle, the cell must
-be eventually marked with a triangle, a square or a rhombus.
+The end cells of a ship are marked by _triangles_ that point along the
+ship axis in the directions away from the inner cells. The inner cells
+are marked by _squares_. In the special case of a one-cell ship, the
+cell is marked by a _rhombus_. To indicate that a cell is occupied by
+a ship, it can be temporarily filled with a _white background_; to
+solve the puzzle, the cell must be eventually marked with a triangle,
+a square or a rhombus. A cell not occupied by a ship can be marked
+by a _dot_, but this is not required to solve the puzzle (except in
+the case where dots are used to indicate the limits of a ship, see
+*Note Section 2.1::).
 
 * Menu:
 
@@ -94,42 +96,27 @@ File: ships.info,  Node: Section 2.1,  Prev: Chapter 2,  Up: Chapter 2,  Next: S
 Section 2.1: Ships controls
 ---------------------------
 
-In order to mark a cell, to change the mark or to remove it, you can
-place a cursor there with a mouse click and then left-click one of the
-nine squares below the grid. As explained above, the marks have the
-following meaning (from left to right):
+An unfilled cell can be marked occupied by _left_-clicking it. Left-
+clicking a filled cell removes the mark. The _right_ click labels an
+unfilled cell with a dot indicating that the cell is not occupied, or
+removes an existing dot. Multiple cells in a row or a column can be
+marked with dots or cleared from dots by a right _drag_.
 
- -  remove the mark (empty cell);
+Alternatively, the cell mark can be switched between `occupied', `not
+occupied' and `unfilled' by consecutively pressing _Enter_. The cursor
+can be moved around the grid by using the _arrow keys_.
 
- -  cell not occupied (dot);
-
- -  cell occupied (filled background);
-
- -  upper end of a vertically oriented ship (triangle pointed
-    upwards);
-
- -  right end of a horizontally oriented ship (triangle pointed
-    rightwards);
-
- -  lower end of a vertically oriented ship (triangle pointed
-    downwards);
-
- -  left end of a horizontally oriented ship (triangle pointed
-    leftwards);
-
- -  one-cell ship (rhombus);
-
- -  inner cell of a ship (square).
-
-Alternatively, the marks of a cell can be switched by consecutively
-pressing _Enter_ or _right_-clicking the mouse. The cursor can be
-moved around the grid by using the _arrow keys_.
+The game takes care of labeling the occupied cells with a specific
+symbol (triangle, square, rhombus) automatically. The player, however,
+must tell the game where the ship ends by placing a dot in the cell
+next the end cell of the ship along the ship axis (unless the ship
+ends at the border). A one-cell ship is marked by placing dots next to
+its all four sides.
 
 Some cells are marked at the time of generating the puzzle. They can
 be distinguished by a thicker border. The marks of these cells cannot
-be changed, with the exception of cells with filled background (and
-blue border), where a triangle, a square or a rhombus are to be placed
-during the game.
+be changed, with the exception of white filled cells without a symbol,
+where the symbols are to be determined during the game.
 
 The sum totals for rows and columns can be left-clicked to mark them
 done (grey them out) or unmark them again. Completed ships are greyed
@@ -154,11 +141,11 @@ _Height_, _Width_
 
 _Difficulty_
 
-    Controls the difficulty of the generated puzzle. At the Basic and
-    Intermediate levels the one-cell ships are avoided (they are more
-    difficult to find). At the Advanced and Extreme levels some of the
-    sum totals for rows and columns may be hidden. The Extreme and,
-    possibly, Advanced levels may require backtracking.
+    Controls the difficulty of the generated puzzle. At the Basic
+    and Intermediate levels the one-cell ships are avoided (they are
+    more difficult to find). At the Advanced and Unreasonable levels
+    some of the sum totals for rows and columns may be hidden. The
+    Unreasonable level may require backtracking.
 
 
 File: ships.info,  Node: Appendix A,  Prev: Section 2.2,  Up: Top,  Next: Index

@@ -1,6 +1,6 @@
 %PDF-1.3
 % LÃºÃ°a
-% The Ships Game, version 1, 20241030
+% The Ships Game, version 2, 20241224
 1 0 obj
 <<
 /Title (The Ships Game)
@@ -77,7 +77,7 @@ endobj
 /h/i/j/k/l/m/n/o
 /p/q/r/s/t/u/v/w
 /x/y/z/braceleft/bar/braceright/asciitilde
-161/quoteleft/quoteright/fi/bullet
+161/quoteleft/quoteright/fi
 ]
 >>
 
@@ -323,6 +323,14 @@ endobj
 /Type /Page
 /Parent 4 0 R
 /Contents 25 0 R
+/Annots [
+<</Subtype/Link
+/Rect[226.656 446.746 278.652 458.746]/Border[0 0 0]
+/Dest[18 0 R/XYZ null null null]>>
+<</Subtype/Link
+/Rect[216.405 121.142 269.62 133.142]/Border[0 0 0]
+/A<</S/URI/URI(https://www.chiark.greenend.org.uk/~sgtatham/puzzles/doc/common.html#common-actions)>>>>
+]
 >>
 endobj
 19 0 obj
@@ -330,11 +338,6 @@ endobj
 /Type /Page
 /Parent 4 0 R
 /Contents 26 0 R
-/Annots [
-<</Subtype/Link
-/Rect[216.405 710 269.62 722]/Border[0 0 0]
-/A<</S/URI/URI(https://www.chiark.greenend.org.uk/~sgtatham/puzzles/doc/common.html#common-actions)>>>>
-]
 >>
 endobj
 20 0 obj
@@ -393,7 +396,7 @@ endobj
 /Dest[17 0 R/XYZ null null null]>>
 <</Subtype/Link
 /Rect[261.5 491 267.5 503]/Border[0 0 0]
-/Dest[19 0 R/XYZ null null null]>>
+/Dest[18 0 R/XYZ null null null]>>
 <</Subtype/Link
 /Rect[273.5 491 279.5 503]/Border[0 0 0]
 /Dest[20 0 R/XYZ null null null]>>
@@ -435,28 +438,33 @@ endobj
 25 0 obj
 <<
 /Filter/FlateDecode
-/Length 1992
+/Length 2540
 >>
 stream
-xœ½Ë’ã6îž¯ðQªjkõzØ“ÓìVªv÷š¾Mç@Ël‹™rôØÎÌ×/€Ùê™Jª’êƒâI@u“ïêºHÊªÚ•U¶+v£Ü½þðÏçþñZïòt÷üºËv)üe;ÃÚ4Èú|Ý}ŠþÕ‰Û,ÇxŸ7‡(£q™F»8ú÷gUôFëó@¿·^Äy}‰yþ/è}¹ÑîöÅ1ÉSPy•Ïö¬Nò*êêàá•À¬n¢9à¹ÄÀw•ž¨&GCËž%øyUZnk¹“šÕ 'O¶:uêæµ*í™„÷cTç'O¸¨ÿgÂ µw(09-×À—aý´¹YcCÊŠ$M
-T+{”H›ä˜5ÑCQDã`¬¿ù…! ¶C¿\uâE?zs˜š<,&ùÛ"u+½ô—©&1ï%jÔ^ˆ‚Á„nÕ×AC¶¦HŽ³jCŽ³ekÎ-YEè¦R•ºó°Z3Áó°´RXh ·F½Oý—¸®¢'Z]I±ÈY‰Ë ­€ó*Ï“´Y'xJ¡¤$H“¦
-r€h”HâóˆBŸ•tr¸C7Ùª—¼,¤´§sJâz/_gÏôºmMœðrS¶õ¸»@ÎKãÃ\ˆ»è<žÙ± _ôeî&BÐ—£5r,Ü‰AôPÐE‡e³Ot`Š‚Ñ¤¦7ÏÌ'Ù»ëê´^9MÊõT=`ù$Í6.Jk¥/´ô¦ænCæ-ÎLrœ·¶
-Îf1ïÄ P?Í¥„,‚ ŒœºÂœÀW¡qÎ» ³-Ãl³ÞGÐ0ú4øFVÖMRCÉ‘C@Lrñ&‚@á .¼<J_ÅøÙ@zu'[þ3.ÿÙ¡Lšò m üˆæQ	}éå?ÿôˆ²J‡’x>ÁÅìÞ¥=&úO„°¹“ï8ù»ò{ÂÃ~pµeB÷y‘&u‘¯ÏPPŸƒ=
-<‘Oýu®„ù>Ã$È*/DÃè&žÌ%‹;™ç54{LåÌ diæuÞ”I‘6ŒÓo‹ãŽ{ºkÉEáæ#ùîýG¿³-L/¬Ìvcb
-È˜6•o™Zî)¸E–Á=v8`N‹¤àÖôD¨ë¤{>Ó'®‚BKŠûD¬ÀtÑØ]Ýp=™ye¹N™%M‡ô}Üö‡ºÁCÛ.7õž;²=˜t	í¹åŸÜZ^@»¬ykÑ<ZÝ®¬‚ óŽ Ém_Â\%:…Âl¥)!øe€ì/í€f¸8Æ-È6W›2½ë¨ƒÛòõk/BžãÔK/¬ôÚììd›ôÃ‘öŽP¶ù0ãâEl™ÙË˜8oÔhyÒFäõ6ŒbTØôyÑ”Ô¾§G+Ü	{È²¢Lò:³éóÖ©90q­‰óçË—.‹>ßåÞ¡‚}´Ò?Î#mÉ]€PÄŸÞ¡rL».ÓøÇ|æòÊ`Ày¨NfÇäX¬oòº<¥6F¦kÑ­ûO«U¬PÜÍì„Å¤àzR?3•¬61Ú›—ÐÞ öÀEE°·FY¼o@ögnšð&ia¼š¡(‚¬%÷Z°ü•G,GÐÔ±8šóKƒ@Ü«E„ƒLXŸ¶øÛv.=¥“Ûª†Mk£¼®Ç1ZV³·õeX¼1¡ï±VnyºŒShŒ‡Âøä¬ÌÆ»ä:,Xú‹ãÔöªýL¨‘ÀÉ‚`P¬bFÏ}rcµtØCœ¤ƒµÒ5Ê˜ÉQÃYïQÖL|‰þèåpÀû"Ú½Ç«Ñ÷i¥r£v˜Óãé«Ã—¯;£pJ{zv‘fI3âI¡òâ¦‰ÔÎçøt¡ßQ]ºù%þ€öëu¶Bi*ã}–¶û,	=à,C[Pâf-MÂ¾Ä?n‹f® ¹gUP~Q'ô›{=õ7ôÜ‹p¨PMeü¾Îåv³O9šhvœD\Ù~Ë)¨hÖ wctÅV)Âqò´lË¦Àñ<}ß1<µo;¶z{þy·ÐÒ»ž='§âß¶3ÙÓ xþüÅ±3†þ€_8ÌyZ	ºÕ÷¹±u+Ö[•SÍ{‰©îëõá~ìáÃ—Ïo¨_E™úQÞ"\¶,j[Xx<s˜i+9Ê&èmg"ê¨_1x\Év¹óÍ‘oPÉ'S×#TÑûŒ~‚ó×ã,¼ÓšÒŽ³Ýüã^c_›tWÂ9<6¬î=ÂÔôr]Û±O¹íK©é}þÏ‡hû©±ÿpr¾.sÞ	,owšù«š‘äœ^¦•ý»U‡¤ò/f1Ò@ùFü4‹Å|Œ½Ÿzª,9ÂW^
-@B€Ï8Uu×\~Ì7×"?P“§§©AËŒŸ¦	g?Ç0{YJ>&Ìê`˜{_$Ü
-Hc³çMQ÷Ž°æ èK‰]¡4eáS {†OD yQSºy
-d7gxµ´98ß";àš+ó×Ì×1L‹ØÆ(î’aØÑpÚ¸Z”?^ZK!'N‘æû•]¡I-PìšnZy3Ÿ7¶¹³ŒÊ¶¿aÙæßq§oÐ´f¾ô¾ðÜÇè©_d€a¼^â'¯ãGNæß	kêÁMž„·îQIø´w²+A¯¬Á:ŽÌ›óÎËøXøT˜s¸><Nr¼Z¥¹Z?=ÿ•­ì
+xœ}ËŽã8î>_‘ÛÆ@•×¯8Éì©§1Àîb ëÖ5ÅQU´m[?¦¦ûë—")‰N\…:Å—)Š")f_lê]™òbSíòM¹ôæå§_ž~úûK½)²ÍÓË&ßdð—ok½GÖ§nóuûù¢®“’ÇbØÉöç¤Ê¶›dûO›ä»íá'Kÿ¯­JŠlû=ùýéß ô–ÐûXé¡È7OgPùtÑÀž×i±Û*ÓØ¾˜×ûí$x^àët$š1ÐðËž5ØÙ™^¯k¹ÚÑLÆöc$ûu¼˜kÔjúÈ¤¢ƒ9?DÂ«I ù§sƒî£Aâ“ãÜ	[ì¤Úqu³îãè2pT^¦yÅŽjt‹Ù>=æûí‡²ÜÖ}ý-"¬ 6¶»>¢Ÿ"?VfŒ°LúY÷ŽÐ^¦:GˆE+Qc…ÈL¸ØÁü°=xaÝhòä0™FrœÍ wnéÂC…¥]ÎÀFõ½žìÜ\ÔÊCÌŒ6µß“z·} ´4$Å"g£^mï‚UE™Vùnà¹’‚ K÷;D£ @Ÿ§ ªþ¨t cX«A~áªó\T¥Ž¶tIÄ·úeŠL/ë_S'¼Üä…u=á.ñÚÙ0‰qãû3;–`Kÿ:]FZ -Gÿ‘cNôX¦Ù¡¤‹h·O4`ò‚ÓdÆ	7ÏÌ'Ý†ë!uz«¦‚†r-e@Ÿ´ÛÆ«é{Ó¿êÍL—™·$wÁq^»À`lžðNÜò§»”Eà„CW€¸S½û8ÇˆlÏ0ù¨tŒ1>ˆJÈíß!ciá‚‹/0­ð Tâ¤ÁèA¸SÃ7ç Õ|úÏ9ýç‡*ÝW(`ÇvŒê_[=&Oÿ5¢Ú¥‡CE<_a‡j
+
+¯Öôq¥Z‹'B«é¢ß1ò/÷„‡}/rËˆƒ·²´.‹e¸*ªs°G…'Rã©¿¶£U¬3L‚˜¡ôB4ônÉœ²¸’E^Gó'ÁTŽZ,<Íüw®.öUZæ¥wãøÇ¬†¤„ãoJrYƒ»ùH¾n…yÿêßÙ†ff¿15
+2†Í.–Lm¯É¹ež§E–ßW8`ÞS¹pè®§ë(ðÓŒ÷\*Wðáæg MÝ†_Á‡Ã^‡‹íN®K™o}Råé¾–.eOÉn7¼?CA˜„a¦øÑ¬µM3_Íº­k›7¬*f–§Çú°ÌrFÙQwW;¨Á`µb¤ËmK7“0œÂxuç¨²J‹:÷x»˜I|â¤çµo¯CRA–˜ûóû;È,G/ýaœðhÛPV<ù"×ùÇV?¼Ce×òª›ÇIØÇ|.ê´èÌ¦k5ù1?¦Çr‚2”Ê¬ÆìH~ò+AŸ¼î¨.ÿ¸Û¦#Åu+:D ¦AöS¤Ó&ý
+[™ 1’Ç¸@bâ”	ƒB£( ƒ€ØùJ™Æ­½õ7i¦L÷õö.Ry¾KË2\¤‡¨†vg†LÊÑ¸ð`Ø4ãhE!OŸ#•â‰\.Ã©ù8)šíy‹Uý¯F_§ÈDÅa)ìª"¥7fzãzM4Ø²°V	Ê<zK:Ë©ï˜fõnv"™,*ºéÌÄRjFé4	ÂšÙGª_´ÀîbÇsB€{Ýåµ;’Gwµ+èö±ðì{ýÂ]†Ë:Ðî¤l{W5X‹è*>ÁÇóúˆâÜÇ”ãpÜ[Ä…êìâAyÝ³ßUº¬Jó’+µµác²mZÓ|ÃfŽUš)ð@~Gèãº-óðî\Cæ© ;.®˜Û8>ÒéŽ;ƒå&wyZ;Þã`^/7›, ie¼I´žÕm[Mð•;×Eža8­"Ì%aÅÝ%g,G.õÅˆá2È°ŽRR±ñÆðíFÐŸóC@ä/(ŠÈ—WæÎÉ´aoÓ‡÷ ÙÇX0?«ÿÎíd®˜ã/^¡PE0¾¹‚^„÷\ôVkiÞI|tÑÄ0ŽÝÍV…ïÁIkH:«iÛ7¦™èÄO	N$HËH; ÒBtœ¡óÍ`ø²LE‘–µïåSŽymó±¾É-Lczuÿ&tG]ù¯Z´L¼B¿ ¹ŽÑ'!0‚Ÿš:ØNzzÓZ°Ò»+$~z=Ü2P V‡[ÎÀFâ…Œ¸=Äü^éô-=¼.t3ßø!ôÇWx:.ToZ±
+H¸ù¿ön·¼ù®ôT7ý»S¸x^4ó0ZùQ¢»?‰î]^¬sdQöy÷œÑÈk›šqG©›ä]`Â:M5POùFw¿‚+–WŸîIRÂlñ¶&AðåûbŒºýBEÀ£E˜}.L	Ï¥†ú8&º:ì°˜RqgAŒ”.3&qFñKî(Kê^ì‘ÆïÝÉ¶‘þ¼è7v˜k1'ºÊçêÏ¡¤ž'Û)?ÈÂ‘L ¡KÜÂÕnÝ~‡ ƒáîCä¸PÂí´äpbÔƒ{þ‰j"Ó&¯áràŽj•™úWO‚YÅi.Ð„Ñ¿<7£çfàÆºå —ÒËpd!ç8¨§šAŒñÑáH8&Yrc4Eô¬¡†Û9œÆ‹O	*N%¼Ô3d„Œï²ÓÎQðÆºµ¬C(=¸Þ³ü'ú‡pŸ`¹‹$È„q“,Äjá{SL¢·°qµ¬Ì“•ÿÐ‹yb:š³WGR_,^ÂŠO$»e•s[í‹Wšg˜¢,9	“éÄ
+ŒáWóî]VEéÅF„»$4ŒózN±ðIÈž©ë˜Íx‘fž„¬ZUx5´9ü™¥"ÅxšÉo¬GRrç…s	¶ìUØ¦'Á–FÁé»¿ôr–<IÖäêÇÃIÔãkŠÞ Ì#-ñC–µs%~Ãð+ÃoÚ™CÌ?09òè-ŽOÃÓ‰|2(U»,þJÄÑ~ž‡äA'«Æ¨U†Û£á>,
+1Ü§å^‚ÅpŸÜX gû¼¦¦aêylÅ%\Wÿå úÞ‰ðÍ;Û>*{†êíãzœïªˆ_ka;÷ü±‚Î–tð
+}hðG(F}¶4Ý4¨g?ÜöBxj¼ðJ~
+
+Ï½¨mýì‚ëa¡³Õâú~¡È¿47[	ÉN«ž#îýRH‘£|B¼hÃyOþâ(C²±ƒ›;ûWúM|=CëìJ¼ýø5… {cð¬:  ­6ƒ9a²ÙÅ—‰†Ñ€'i˜ŽW5s33µ•ÜÔ1dÀ1©/töýf‡IÚÕjõ›Í€C>[È	d­oÀ¥¿àVñ%Æ_—ÿtG tc¨!JòZF°”¨|[¹.ð×§ÿE„Ý=
 endstream
 endobj
 26 0 obj
 <<
 /Filter/FlateDecode
-/Length 879
+/Length 550
 >>
 stream
-xœuUKÛ6¾çWèVˆ´¢,ÙÎq³Ðö`ô÷@K´Å®D:ÕÔûë;|‰\eòÌpžg†ŸÛ—2#UÖ^2’•ð#Ù¡ÊÍ1k§ìj†óª.‹Ýn‡æerLÕ -5ç•½HµÒJbøþˆ‡Tô+ÝÉq™D<ë¨Xé3[É‘]tŽQ7òî“±èAË•œ¨z‰òÅôz)¢³º*†Iƒîï+ËEŸpäþ«ýãC™åd—µ=€°¨ª‹š‚1pzÅP"E=Éé62m“ö6óÀosb	­LÈ.Õ‡œíEË‰jÞÑq¼Gñ	ýx7D£^²$†‰Á:6ÏTqp°)obT|Í¦Dƒ»:f¾ÿ˜œ˜Âu‰ü©¨ãÊ‘79sÍ¥½R`]a@tR)Ö°EˆWU.Þ	=Ž#Îw)ìExòuvÞSôlî?`‚ˆ‹`:3«ª‚DF^"ƒ DÝ21¡é[ÓTûTÕ£g>¥
-->Bq€ÀôK’ßW©4=lé×åõuô@<Éqô™×Õ'˜"é)\•€º>¯t¥qüpÙgdoF4ßÕEU”{§Â¨ÀðÍ`ÿì[ìpD7ªè¨ÌÎÞI˜óàÃ_ŒøìsYÍ¶—ùSjN|QrZÂ¼§e†Ž-Š"-YÞæ–ïÚY”ï7–šÁm-®‡.Ä—°vúñë qûwZ`Uì÷5(…î,Xîøú7â½6èä¤¶Ö+>ÏüÕçhšÄü_ïÅ}ó÷°š·iægô+¿˜»eÔ÷·é¦—ñ$…VÒ,VÒ²·ËÆ1¥™ëdçœ¬R“W ß¨_™`ŠÚ=D7Û™E<êÿ‰õ™Î¼‹¬]âù]@“L¬çà<JÇdo„~Ê	s¾—Ž™…@>ÒUiØuU®ŒoD¸ÞÛº¼ÑÉFq;þ]ËI¦\dôa^– `NEo¶×*zÔ‘v%y»ÇÞ†èBF6ºH˜/ÿjÅ¦$V@fit«ä~«ËÀ¸9œ„ÙóîIöLò&§÷˜ø*{ÁDï‘9'!Þ÷Ì¾u^Ð¦	­e&QìãáúÞŠ™ŸáÚ70—›šß¢h¦jÛOv¸ÄJ¤Ø÷…‡ýt¦Ý‹Vðáâê†|:M–×µÝ”¨1#÷¥ýÄ{Nœ
+xœuTËr›0Ý÷+XJ3EY:igÚnC§‹¸„Q’#D:Î×WBa'ÏØ÷ù8G÷ú¾úð©Í£4ª6J£Ä|ÒhW "
+’EÕ=‚æ;.H;~aŒ‹œ©¢ÓLÁ”€þª¾›Z&ÛZ»á,Š±QS£êØÈLš©°¦N§Ê;(Ä	x˜ Ê{zì½¹Urp’î¼é€³‚‡iÔr@ÈgØ¹äYs)¼,ÞÍ«`™€Ë™mÓ&&ä!¤B²Œ¾2~ê4¬~ob”ç™	²oÉÌù	ü„„ Þèî†8Íæì•ŸGþêg”­û=)Þ8‰{ãód¸oÇŒÏà3o-ÆzêõåzÜíc<H¡•ìÿ))QšŽ!«$å4s‘+²Zí\‹|~b‚)ªYLçéõµg(öú?½îéÈë R±©òM˜%XÃMñ`5ka6äÅî[ ¼™I
+Ï4™7LwuÍúÞ‰3DLÄè÷Øª~è—Ð<o,¦%á0w0]/ïd2ÈúB¶–‹ÛúDs€h1ì·aÝZfß¸Sõ:…£Ç‰?„bt”b¾“¤o(*ÉÌü(´ùA½ìÈ[Â¦aã‘šnk´REIÛè¯w‡ôîZöÓ 6É½å¸iÙñ¦aCµè
+ëÚê
+å-s'{4Š=O|ù‡9ÒúVæ‹‹“;£ô®D$Š	¾›ï‡Ø£ùRýAqM„
 endstream
 endobj
 27 0 obj
@@ -475,10 +483,10 @@ endobj
 28 0 obj
 <<
 /Filter/FlateDecode
-/Length 320
+/Length 321
 >>
 stream
-xœ}‘KOë0„÷ýgwmé¦øõH¶ E !Õ;Ä"Mj”—ÜT*ýõØiÔ¢6 lNìofÎ$šR„¤ÀÁ[¨÷fqW)`LHx(DL§`xC«¶´˜JtÀïæ)°ážE–@Â˜2 ÌÚ»ºÄ	ZÊ¥F|¤C'¦èšÞÕ6\ªlžhßÕ»ÿ8a’ ªó§a½uý'™àd©4·ºS‚¾¼ûØÁŸe*þêš«]aÛbÜ “ÙÄ´ÀËÊ–*¦æØg×î±¯ l®Í¨Ž6—XšêY«>÷ycë«ž2%cuy­œî©cå›O³vM×+Á–‚jdpJP>lóæßîrúÚù!ßÄ_s>Ù?ßºº¶Åà‚W aBø)„b4íÍÏ“<O§¶RC"¨Œ¤±ù\<šoù·Ÿ×
+xœ}‘Kkã0…÷ùw7ŒS]=ímK:0íJŽ#7*~á8æ×WrL2$nñæZúÎ9÷Ø†ƒÖ¤BÐ;(vñPjàl	,<3)Ø^ÉªÙ:ŠŠé›ýØpÏ#Ë ì6 Ê9øjK”F©¥!b¤ƒS´uç+¡t6O4CßVûß4áŠ‘²íÏÃzç»=M2)ØR"ïuEF>{ÿ¾‚?Ïtüõ-WùÂ5Å¸A¦²ˆi¿+XÔ\Ï±/¾9c_Éø\›Qm®±˜šY«.ïóÚ®ÿ®zÊµŠÕÕ­rºG©ÆÊwŸfíë¶	V’/%biÊH>ìòú×þzú¯í‡|Íåäp:ýÿþÔV•+¼b †mTç¤dÚ[\&y™Îm•D¢Šb¨ýX<Û/ù”ŸÖ
 endstream
 endobj
 29 0 obj
@@ -562,36 +570,36 @@ xref
 0000000327 00000 n 
 0000000463 00000 n 
 0000000601 00000 n 
-0000001205 00000 n 
-0000001782 00000 n 
-0000002350 00000 n 
-0000002915 00000 n 
-0000003486 00000 n 
-0000004060 00000 n 
-0000004633 00000 n 
-0000005213 00000 n 
-0000005243 00000 n 
-0000005549 00000 n 
-0000006148 00000 n 
-0000006213 00000 n 
-0000006278 00000 n 
-0000006519 00000 n 
-0000006730 00000 n 
-0000008095 00000 n 
-0000008780 00000 n 
-0000009146 00000 n 
-0000009952 00000 n 
-0000012017 00000 n 
-0000012968 00000 n 
-0000014387 00000 n 
-0000014779 00000 n 
-0000014908 00000 n 
-0000015009 00000 n 
-0000015149 00000 n 
-0000015314 00000 n 
-0000015425 00000 n 
-0000015538 00000 n 
-0000015663 00000 n 
+0000001198 00000 n 
+0000001775 00000 n 
+0000002343 00000 n 
+0000002908 00000 n 
+0000003479 00000 n 
+0000004053 00000 n 
+0000004626 00000 n 
+0000005206 00000 n 
+0000005236 00000 n 
+0000005542 00000 n 
+0000006141 00000 n 
+0000006206 00000 n 
+0000006559 00000 n 
+0000006624 00000 n 
+0000006835 00000 n 
+0000008200 00000 n 
+0000008885 00000 n 
+0000009251 00000 n 
+0000010057 00000 n 
+0000012670 00000 n 
+0000013292 00000 n 
+0000014711 00000 n 
+0000015104 00000 n 
+0000015233 00000 n 
+0000015334 00000 n 
+0000015474 00000 n 
+0000015639 00000 n 
+0000015750 00000 n 
+0000015863 00000 n 
+0000015988 00000 n 
 trailer
 <<
 /Size 37
@@ -599,5 +607,5 @@ trailer
 /Info 1 0 R
 >>
 startxref
-15761
+16086
 %%EOF
