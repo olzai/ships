@@ -6,6 +6,16 @@ grid, given the sum totals of ship cells per row or column.
 Author: Oleg Zaitsev
 
 Version 1, 20241030
+Version 2, 20241224 (thanks to Simon Tatham for useful suggestions)
+  1. A logical solver is implemented. Now the games with difficulty level <= 2
+are guaranteed to be solvable without backtracking. The difficulty level is
+now called "unreasonable".
+  2. User interface is simplified: 
+    (a) the user marks cells occupied or vacant, and the game fills 
+the specific state of the cell; 
+    (b) right drag marks multiple cells vacant or clears.
+  3. For the field 7x7, 2 is now the minimum ship size (in version 1 it was 1).
+  4. The code is optimized.
 
 
 Licence
@@ -60,14 +70,13 @@ enum {
     COL_GUESS = COL_GRID, 
     COL_SUMS = COL_GRID, 
     COL_SEGMENT = COL_GRID,
-    COL_SEGMENT_FRAME = COL_GRID,
     COL_SHIPS = COL_GRID, 
     COL_OCCUP,
-    COL_OCCUP_FRAME,
     COL_ERROR,
     COL_DONE_SUMS,
     COL_DONE_SHIPS = COL_DONE_SUMS,
     COL_HIGHLIGHT = COL_DONE_SUMS, 
+    COL_DRAG = COL_DONE_SUMS, 
     COL_FLASH,
     NCOLOURS
 };
@@ -106,7 +115,7 @@ enum Difficulty {
     BASIC,
     INTERMEDIATE,
     ADVANCED,
-    EXTREME
+    UNREASONABLE
 };
 
 
@@ -160,8 +169,6 @@ int cmp(const void *a, const void *b, void *ctx) {
 #define SUMS_UP(x)       (1*x)
 #define SUMS_LEFT(x)     (1*x)
 #define GRID_SPACE(x)    ((int) x/2)  // space under the grid
-#define SEGMENTS(x)      (1*x + 1)    // see enum Configuration
-#define SEGMENT_SPACE(x) ((int) x/4)  // horizontal space between segments
 #define SHIPS(x)         ((int) 3*x/2) 
 
 /* tile size on paper in mm (integer) */
@@ -169,6 +176,20 @@ int cmp(const void *a, const void *b, void *ctx) {
 
 /* completion flash */
 #define FLASH_TIME 0.4F
+
+/* condition for a corrupt string */
+#define BADSTRING(p, atoi_p, pmin, pmax) *(p) && \
+  (atoi_p < pmin || atoi_p > pmax - 1 || atoi_p == 0 && *(p) != '0') \
+  || ! *(p)
+
+
+/* matrix and its rotations */
+#define MAT_0(i, j, m, h, w)  m[(i)][(j)]
+#define MAT_1(i, j, m, h, w)  m[(j)][(h-1-(i))]  
+#define MAT_2(i, j, m, h, w)  m[(h-1-(i))][w-1-(j)]            
+#define MAT_3(i, j, m, h, w)  m[w-1-(j)][(i)]            
+                      
+
 
 /* ----------------------------------------------------------------------
  *-*-* end of my definitions
@@ -183,10 +204,24 @@ static void solver (
   const struct game_state_const *init_state, int count_lim, struct sol *soln
 );
 
+static int solve_by_logic(
+  int diff, const struct game_state_const *init_state, 
+  enum Configuration **grid, int *occ, int *vac
+);
+ 
+static void render_grid_conf(
+  int h, int w, enum Configuration **grid, enum Configuration **init, 
+  bool remove
+);
+
 static void place_ship(
   const struct game_state_const *init_state, int **init_ext, bool ***blocked, 
   bool **ship_pos, int **ship_coord_tmp, int ship_num, int vert0, int y0, 
   int x0, int count_lim, struct sol *soln
+);
+
+static bool compl_ships_distr(
+  int h, int w, int **grid, int max_size, int *distr
 );
 
 static void generator_diff(
@@ -208,7 +243,7 @@ static void draw_segment(
 static void draw_cell(
   drawing *dr, const game_state *state, int xc, int yc, 
   int tilesize, int x0pt, int y0pt, bool cursor, bool error, bool update,
-  bool flash
+  bool drag, bool clear, enum Configuration conf, bool flash
 );
 
 static void validation(game_state *state, bool *solved);
@@ -248,7 +283,7 @@ struct game_state {
     bool *rows_err, *cols_err;
     //-*-* variable is true if the number of ships of some length
     // exceeds the required number of ships of this length
-    bool *ships_err;
+    bool ships_err;
     //-*-* flags showing if the game is solved and if cheated (solve function)
     bool completed, cheated;
 };
@@ -267,65 +302,38 @@ static game_params *default_params(void)
 }
 
 
+static game_params *dup_params(const game_params *params)
+{
+    game_params *ret = snew(game_params);
+    *ret = *params;		       /* structure copy */
+    return ret;
+}
+
+
 /*-*-* parameters for preset menu "Type" */
 static bool game_fetch_preset(int i, char **name, game_params **params)
 {
-    *params = snew(game_params);
-    *name = snewn(32, char);
-    switch (i) {
-        case 0:
-            (*params)->H = 7;
-            (*params)->W = 7;
-            (*params)->diff = BASIC;
-            sprintf(*name, "7x7 Basic");
-           break;
-        case 1:
-            (*params)->H = 8;
-            (*params)->W = 10;
-            (*params)->diff = BASIC;
-            sprintf(*name, "8x10 Basic");
-            break;
-        case 2:
-            (*params)->H = 8;
-            (*params)->W = 10;
-            (*params)->diff = INTERMEDIATE;
-            sprintf(*name, "8x10 Intermediate");
-            break;
-        case 3:
-            (*params)->H = 8;
-            (*params)->W = 10;
-            (*params)->diff = ADVANCED;
-            sprintf(*name, "8x10 Advanced");
-            break;
-        case 4:
-            (*params)->H = 8;
-            (*params)->W = 10;
-            (*params)->diff = EXTREME;
-            sprintf(*name, "8x10 Extreme");
-            break;
-        case 5:
-            (*params)->H = 10;
-            (*params)->W = 12;
-            (*params)->diff = INTERMEDIATE;
-            sprintf(*name, "10x12 Intermediate");
-            break;
-        case 6:
-            (*params)->H = 10;
-            (*params)->W = 12;
-            (*params)->diff = ADVANCED;
-            sprintf(*name, "10x12 Advanced");
-            break;
-        case 7:
-            (*params)->H = 10;
-            (*params)->W = 12;
-            (*params)->diff = EXTREME;
-            sprintf(*name, "10x12 Extreme");
-            break;
-        default: 
-            sfree(*params);
-            sfree(*name);
-            return false;
-    }
+    static struct {
+        const char *title;
+        game_params params;
+    } const presets[] = {
+        { "7x7 Basic",          {7, 7,   BASIC} },
+        { "8x10 Basic",         {8, 10,  BASIC} },
+        { "8x10 Intermediate",  {8, 10,  INTERMEDIATE} },
+        { "8x10 Advanced",      {8, 10,  ADVANCED} },
+        { "8x10 Unreasonable",  {8, 10,  UNREASONABLE} },
+        { "10x12 Basic",        {10, 12, BASIC} },
+        { "10x12 Intermediate", {10, 12, INTERMEDIATE} },
+        { "10x12 Advanced",     {10, 12, ADVANCED} },
+        { "10x12 Unreasonable", {10, 12, UNREASONABLE} },
+    };
+
+    if (i < 0 || i >= lenof(presets))
+        return false;
+
+    *name = dupstr(presets[i].title);
+    *params = dup_params(&presets[i].params);
+
     return true;
 }
 
@@ -333,14 +341,6 @@ static bool game_fetch_preset(int i, char **name, game_params **params)
 static void free_params(game_params *params)
 {
     sfree(params);
-}
-
-
-static game_params *dup_params(const game_params *params)
-{
-    game_params *ret = snew(game_params);
-    *ret = *params;		       /* structure copy */
-    return ret;
 }
 
 
@@ -410,7 +410,7 @@ static config_item *game_configure(const game_params *params)
 
     ret[2].name = "Difficulty";
     ret[2].type = C_CHOICES;
-    sprintf(buf, ":Basic:Intermediate:Advanced:Extreme");
+    sprintf(buf, ":Basic:Intermediate:Advanced:Unreasonable");
     ret[2].u.choices.choicenames = dupstr(buf);
     ret[2].u.choices.selected = params->diff;
 
@@ -440,17 +440,9 @@ static const char *validate_params(const game_params *params, bool full)
 {    
     char s[256];
     
-    if (full) {    
-        if (
-          params->H < SIZEMIN || params->H > SIZEMAX || params->W < SIZEMIN || 
-          params->W > SIZEMAX || params->diff < 0 || params->diff > 3
-        ) 
-        { 
-            sprintf(s, 
-              "H(eight) and W(idth) must be between %d and %d. For Random Seed use parameter string in the format HxWdD, where difficulty D = 0, 1, 2, 3.", SIZEMIN, SIZEMAX
-            ); 
-            return dupstr(s);
-        }        
+    if (full && (params->diff < 0 || params->diff > 3)) {    
+        sprintf(s, "Unknown difficulty rating."); 
+        return dupstr(s);
     } 
     
     else if (
@@ -458,9 +450,8 @@ static const char *validate_params(const game_params *params, bool full)
       params->W < SIZEMIN || params->W > SIZEMAX 
     ) 
     { 
-        sprintf(s,
-          "For parameter substring use the format HxW, where size H, W = %d, %d, ..., %d", 
-          SIZEMIN, SIZEMIN + 1, SIZEMAX
+        sprintf(s, 
+          "Height and width must be between %d and %d.", SIZEMIN, SIZEMAX
         );
         return dupstr(s);
     }        
@@ -507,41 +498,41 @@ static char *new_game_desc(const game_params *params, random_state *rs,
     }
     
     //-*-* create string
-    char *ret, tmp[32];    
-    ret = snewn((num_ships + h + w)*3 + num_init*8 + 1, char);    
-    *ret = '\0';
+    char *ret, *str;    
+    str = snewn((num_ships + h + w)*3 + num_init*8 + 1, char); 
+    ret = str; 
     
     for (i = 0; i < num_ships; i++) {
-        sprintf(tmp, "s%d", ships[i]);    
-        strcat(ret, tmp); 
+        sprintf(ret, "s%d", ships[i]);    
+        ret += 2 + (ships[i] > 9); 
     }
     for (i = 0; i < h; i++) {
-        sprintf(tmp, "r%d", rows[i]);
-        strcat(ret, tmp); 
+        sprintf(ret, "r%d", rows[i]);
+        ret += 2 + (rows[i] < 0 || rows[i] > 9); 
     }
     for (i = 0; i < w; i++) {
-        sprintf(tmp, "c%d", cols[i]);
-        strcat(ret, tmp); 
+        sprintf(ret, "c%d", cols[i]);
+        ret += 2 + (cols[i] < 0 || cols[i] > 9); 
     }
     for (i = 0; i < h; i++) {
         for (j = 0; j < w; j++) {
             if (init[i][j] > -2) {
-                sprintf(tmp, "y%dx%dz%d", i, j, init[i][j]);
-                strcat(ret, tmp); 
+                sprintf(ret, "y%dx%dz%d", i, j, init[i][j]);
+                ret += 6 + (i > 9) + (j > 9) + (init[i][j] < 0); 
             }
         }
     }
-
+    
+    ret = '\0';
         
     sfree(ships);
       
-    return ret;
+    return str;
 }
 
 /*-*-* validate game description */
 static const char *validate_desc(const game_params *params, const char *desc)
 {
-    char ret[256];
     int 
       count_s = 0, count_r = 0, count_c = 0, count_y = 0, count_x = 0, 
       count_z = 0
@@ -549,6 +540,7 @@ static const char *validate_desc(const game_params *params, const char *desc)
 
     //-*-* p will move along the string
     char const *p = desc;
+    int atoi_p;
     
     
     while (*p) {
@@ -556,13 +548,12 @@ static const char *validate_desc(const game_params *params, const char *desc)
         if (*p == 's') {
             count_s++;
             p++;
-            if (*p &&  (atoi(p) <= 0) || ! *p) {
-                sprintf(ret, "Positive integer expected after 's'.");
-                return dupstr(ret);
+            atoi_p = atoi(p);
+            if (*p &&  (atoi_p <= 0) || ! *p) {
+                return "Positive integer expected after 's'.";
             }
-            else if  (*p && atoi(p) > params->H && atoi(p) > params->W) {
-                sprintf(ret, "Ship size after 's' bigger than field size.");
-                return dupstr(ret);
+            else if  (*p && (atoi_p > params->H || atoi_p > params->W)) {
+                return "Ship size after 's' bigger than field size.";
             }
             else {
                 while (*p && isdigit(*p)) p++;
@@ -572,17 +563,9 @@ static const char *validate_desc(const game_params *params, const char *desc)
         else if (*p == 'r') {
             count_r++;
             p++;
-            if (
-              *p &&  (
-                atoi(p) < -1 || atoi(p) > params->W || 
-                atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                sprintf(ret, 
-                  "Integer between -1 and width is expected after 'r'."
-                );
-                return dupstr(ret);
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, -1, params->W + 1)) {
+                return "Integer between -1 and width is expected after 'r'.";
             }
             else {
                 while (*p && isdigit(*p)) p++;
@@ -592,17 +575,9 @@ static const char *validate_desc(const game_params *params, const char *desc)
         else if (*p == 'c') {
             count_c++;
             p++;
-            if (
-              *p &&  (
-                atoi(p) < -1 || atoi(p) > params->H || 
-                atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                sprintf(ret, 
-                  "Integer between -1 and height is expected after 'c'."
-                );
-                return dupstr(ret);
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, -1, params->H + 1)) {
+                return "Integer between -1 and height is expected after 'c'.";
             }
             else {
                 while (*p && isdigit(*p)) p++;
@@ -612,18 +587,11 @@ static const char *validate_desc(const game_params *params, const char *desc)
         else if (*p == 'y') {
             count_y++;
             p++;
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > params->H - 1|| 
-                atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                sprintf(ret, 
-                  "Integer between 0 and (height - 1) is expected after 'y'."
-                );
-               return dupstr(ret);
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, params->H)) 
+              return 
+                "Integer between 0 and (height - 1) is expected after 'y'."
+            ;
             else {
                 while (*p && isdigit(*p)) p++;
             }
@@ -632,18 +600,11 @@ static const char *validate_desc(const game_params *params, const char *desc)
         else if (*p == 'x') {
             count_x++;
             p++;
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > params->W - 1|| 
-                atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                sprintf(ret, 
-                  "Integer between 0 and (width - 1) is expected after 'x'."
-                );
-                return dupstr(ret);
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, params->W)) 
+              return 
+                "Integer between 0 and (width - 1) is expected after 'x'."
+            ;
             else {
                 while (*p && isdigit(*p)) p++;
             }
@@ -652,17 +613,9 @@ static const char *validate_desc(const game_params *params, const char *desc)
         else if (*p == 'z') {
             count_z++;
             p++;
-             if (
-              *p &&  (
-                atoi(p) < -1 || atoi(p) > 6 || 
-                atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                sprintf(ret, 
-                  "Integer between -1 and 6 is expected after 'z'."
-                );
-                return dupstr(ret);
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, -1, 7)) {
+                return "Integer between -1 and 6 is expected after 'z'.";
             }
             else {
                 while (*p && isdigit(*p)) p++;
@@ -675,22 +628,16 @@ static const char *validate_desc(const game_params *params, const char *desc)
     
     
     if (count_s < 1) {
-        sprintf(ret, "Number of ships 's' must be at least one.");
-        return dupstr(ret);
+        return "Number of ships 's' must be at least one.";
     }
     if (count_r != params->H) {
-        sprintf(ret, "Number of rows 'r' not equal to height.");
-        return dupstr(ret);
+        return "Number of rows 'r' not equal to height.";
     }
     if (count_c != params->W) {
-        sprintf(ret, "Number of columns 'c' not equal to width.");
-        return dupstr(ret);
+        return "Number of columns 'c' not equal to width.";
     }
     if (count_y != count_x || count_x != count_z) {
-        sprintf(ret, 
-          "Number of 'y', 'x', 'z' (coordinates and value of initially disclosed cells) must be equal."
-        );
-        return dupstr(ret);
+        return "Number of 'y', 'x', 'z' (coordinates and value of initially disclosed cells) must be equal.";
     }
     
     return NULL;
@@ -824,6 +771,9 @@ static game_state *new_game(midend *me, const game_params *params,
         state->init_state->init  [y[i]] [x[i]] = z[i];
         state->grid_state        [y[i]] [x[i]] = z[i];
     }
+    
+    //-*-* specify type (1 to 6) of OCCUP cells wherever possible
+    render_grid_conf(h, w, state->grid_state, state->init_state->init, false);
 
     //-*-* sort ships
     int ctx = -1;
@@ -842,7 +792,6 @@ static game_state *new_game(midend *me, const game_params *params,
         
     //-*-* check for errors
     bool solved; 
-    state->ships_err = snew(bool);
     validation(state, &solved);
     state->completed = solved;
 
@@ -861,8 +810,7 @@ static game_state *dup_game(const game_state *state)
     int h = state->init_state->H, w = state->init_state->W;
     int ns = state->init_state->num_ships;
     
-    ret->ships_err = snew(bool);
-    *ret->ships_err = *state->ships_err;
+    ret->ships_err = state->ships_err;
     ret->completed = state->completed;
     ret->cheated   = state->cheated;
 
@@ -921,7 +869,6 @@ static void free_game(game_state *state)
     sfree(state->cols_err);
     
     sfree(state->ships_state);
-    sfree(state->ships_err);
     
     if (--state->init_state->refcount <= 0) {
         sfree(*(state->init_state->init));
@@ -969,9 +916,9 @@ static char *solve_game(const game_state *state, const game_state *currstate,
 	    return NULL; 
 	}
 	
-    char out[8*ships_sum + 2], tmp[16];
+    char out[8*ships_sum + 2], *ptr = out;
     int vert, y, x, z;
-    strcpy(out, "S"); //-*-* first symbol S to indicate Solve usage
+    strcpy(ptr++, "S"); //-*-* first symbol S to indicate Solve usage
     for (i = 0; i < ns; i++) {
         for (j = 0; j < ships[i]; j++) {
             vert = soln.ship_coord[i][0];
@@ -983,10 +930,11 @@ static char *solve_game(const game_state *state, const game_state *currstate,
             else if (j == ships[i] - 1 &&   vert) z = SOUTH;
             else if (j == ships[i] - 1 && ! vert) z = EAST;
             else                                  z = INNER;
-            sprintf(tmp, "y%dx%dz%d", y, x, z);
-            strcat(out, tmp);
+            sprintf(ptr, "y%dx%dz%d", y, x, z);
+            ptr += 6 + (y > 9) + (x > 9) + (z < 0);
         }
     }
+    *ptr = '\0';
     
 	sfree(*(soln.ship_coord));
 	sfree(*(soln.ship_coord2));
@@ -1000,20 +948,25 @@ static char *solve_game(const game_state *state, const game_state *currstate,
 
 /*-*-* data not located in game_state */
 struct game_ui {
+    //-*-* drag start and end grid coords 
+    int drag_sy, drag_sx, drag_ey, drag_ex; 
+    //-*-* flag indicating if a drag is underway
+    bool drag;
+    //-*-* flag indicating if drag clears filled cells
+    bool clear;
     //-*-* coordinates of the currently highlighted square on the grid
     int hy, hx;
     //-*-* flag indicating if the cursor is currently visible
     bool hshow;
-    //-*-* initial configuration after cursor appears at a cell
-    enum Configuration conf0;
 };
 
 static game_ui *new_ui(const game_state *state)
 {
     game_ui *ui = snew(game_ui);
+    ui->drag_sy = ui->drag_sx = ui->drag_ey = ui->drag_ex = -1;
+    ui->drag = ui->clear = false;
     ui->hy = ui->hx = 0;
     ui->hshow = false;
-    ui->conf0 = UNDEF;
     return ui;
 }
 
@@ -1042,8 +995,6 @@ struct game_drawstate {
     int ys, xs, dxs;
     //-*-* coordinates of the previously highlighted square on the grid
     int hy, hx;
-    //-*-* flag indicating if the cursor was visible before the move
-    bool hshow;
     //-*-* flag indicating if the drawstate has changed after start
     bool started;
 };
@@ -1056,16 +1007,23 @@ static char *interpret_move(const game_state *state, game_ui *ui,
 {
     int h = state->init_state->H, w = state->init_state->W;  
     int ts = ds->tilesize, yg = ds->yg, xg = ds->xg; 
-    int i;
+    int i, yy, xx;
+    enum Configuration conf;
     enum Configuration **init = state->init_state->init;
     enum Configuration **grid = state->grid_state;
     char move[32];
     char *p;
     
+    //-*-* are y, x within boundary?
+    #define INGRID(y, x, yg, xg, h, w, ts) \
+      yg <= y && y < yg + ts * h && xg <= x && x < xg + ts * w
+      
+    //-*-* find grid coordinates from mouse coordinates
+    #define GRID_YX(yx, yxg, ts) (int) (yx - yxg) / ts
+      
     //-*-* cursor moves
     if (IS_CURSOR_MOVE(button)) {
         p = move_cursor(button, &ui->hx, &ui->hy, w, h, false, &ui->hshow);
-        ui->conf0 = grid [ui->hy][ui->hx];
         return p;
     }
     
@@ -1074,142 +1032,110 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         //-*-* new appearance
         if (! ui->hshow) {
             ui->hshow = true;
-            ui->conf0 = grid[ui->hy][ui->hx];
             return MOVE_UI_UPDATE;
         }
         //-*-* switch cell state
-        else if (
-          init[ui->hy][ui->hx] == UNDEF && 
-          (grid[ui->hy][ui->hx] + 3) % 9 - 2 != ui->conf0
-        ) {
+        else if (init[ui->hy][ui->hx] == UNDEF) {
             sprintf(
               move, "y%dx%dz%d", ui->hy, ui->hx, 
-              (grid[ui->hy][ui->hx] + 3) % 9 - 2
+              (grid[ui->hy][ui->hx] + 3) % 3 - 2
             );
             return dupstr(move);
-        }
-        //-*-* switch cell state if init == OCCUP
-        else if (
-          init[ui->hy][ui->hx] == OCCUP && 
-          (grid[ui->hy][ui->hx] + 1) % 7 != ui->conf0
-        ) {
-            sprintf(
-              move, "y%dx%dz%d", ui->hy, ui->hx, 
-              (grid[ui->hy][ui->hx] + 1) % 7
-            );
-            return dupstr(move);
-        }
-        //-*-* hide
-        else {
-            ui->hshow = false;
-            return MOVE_UI_UPDATE;
         }
     }
+
     
-    //-*-* mouse left click
+    
+    //-*-* set VACANT with right click/drag
+    
+    //-*-* start a click/drag
+    if (IS_MOUSE_DOWN(button) && button == RIGHT_BUTTON) {
+        if (INGRID(y, x, yg, xg, h, w, ts)) {
+        
+            //-*-* hide cursor
+            ui->hshow = false;
+                
+            yy = GRID_YX(y, yg, ts);  xx = GRID_YX(x, xg, ts);
+            
+            if (init[yy][xx] == UNDEF) {
+                ui->drag_sy = ui->drag_ey = yy;
+                ui->drag_sx = ui->drag_ex = xx;
+        
+                ui->drag = true;
+        
+                //-*-* draw or clear
+                if (grid[yy][xx] == UNDEF) ui->clear = false;
+                else                       ui->clear = true;
+                return MOVE_UI_UPDATE;
+            }
+        }
+        
+        ui->drag_sy = ui->drag_sx = ui->drag_ey = ui->drag_ex = -1;
+        return MOVE_UNUSED;
+    }
+
+
+    //-*-* the drag continues
+    if (IS_MOUSE_DRAG(button) && ui->drag_sy != -1 && ui->drag_sx != -1) {
+    
+        ui->drag = false;
+        
+        //-*-* drag takes effect if strictly vertical or horizontal
+        if (INGRID(y, x, yg, xg, h, w, ts)) {
+        
+            yy = GRID_YX(y, yg, ts);  xx = GRID_YX(x, xg, ts);
+            
+            if (yy == ui->drag_sy || xx == ui->drag_sx) {
+                ui->drag_ey = yy;
+                ui->drag_ex = xx;
+                ui->drag = true;
+            }
+        }
+        
+        return MOVE_UI_UPDATE;
+    }
+    
+    //-*-* the drag is finished
+    if (IS_MOUSE_RELEASE(button) && ui->drag) {
+        ui->drag = false;
+        sprintf(move, "d%dy%dx%dy%dx%d", ui->clear, 
+          ui->drag_sy, ui->drag_sx, ui->drag_ey, ui->drag_ex
+        );
+        return dupstr(move);
+    }
+    
+    
+    //-*-* set row/column done
     if (button == LEFT_BUTTON) {
-        //-*-* click within grid (show/hide cursor)
-        if (yg <= y && y < yg + ts*h && xg <= x && x < xg + ts*w) {
-            ui->hy = (int) (y - yg)/ts;  ui->hx = (int) (x - xg)/ts;
-            if (
-              init[ui->hy][ui->hx] != UNDEF && init[ui->hy][ui->hx] != OCCUP
-            ) ui->hshow = false;
-            else if (ui->hy == ds->hy && ui->hx == ds->hx) {
-                ui->hshow = ! ui->hshow;
-            }
-            else ui->hshow = true;
-            ui->conf0 = grid[ui->hy][ui->hx];
-            return MOVE_UI_UPDATE;
-        }
-        //-*-* click segment (set cell state)
-        if (
-          ui->hshow   &&
-          ds->ys <= y && y <= ds->ys  +  ts  &&
-          ds->xs <= x && x < ds->xs  +  ds->dxs * 9
-        ) {
-            i = (int) (x - ds->xs)/ds->dxs;
-            if (
-              ds->xs  +  ds->dxs * i <= x       &&
-              x <= ds->xs  +  ds->dxs * i  + ts &&
-              (init[ui->hy][ui->hx] != OCCUP || i - 2 >= 0)
-            ) {
-                ui->conf0 = i - 2;
-                sprintf(move, "y%dx%dz%d", ui->hy, ui->hx, i - 2);
-                return dupstr(move);
-            }
-        }
         //-*-* click row sum
         if (yg <= y && y < yg + ts*h && xg - SUMS_LEFT(ts) <= x && x < xg) {
-            sprintf(move, "r%d", (int) (y - yg)/ts);
+            sprintf(move, "r%d", GRID_YX(y, yg, ts));
             return dupstr(move);
         }
         //-*-* click column sum
         if (yg - SUMS_UP(ts) <= y && y < yg && xg <= x && x < xg + ts*w) {
-            sprintf(move, "c%d", (int) (x - xg)/ts);
+            sprintf(move, "c%d", GRID_YX(x, xg, ts));
             return dupstr(move);
         }
-    }
+    } 
     
-
-    //-*-* mouse right click within grid
-    if (
-      button == RIGHT_BUTTON &&
-      yg <= y && y < yg + ts*h && xg <= x && x < xg + ts*w
-    ) {
-        ui->hy = (int) (y - yg)/ts;  ui->hx = (int) (x - xg)/ts;
-        //-*-* hide cursor
-        if (
-          init[ui->hy][ui->hx] != UNDEF && init[ui->hy][ui->hx] != OCCUP
-        ) {
-            ui->hshow = false;
-            return MOVE_UI_UPDATE;
-        }
-        //-*-* show cursor
-        else if (ui->hy != ds->hy || ui->hx != ds->hx) {
-           ui->hshow = true;
-            ui->conf0 = grid[ui->hy][ui->hx];
-            return MOVE_UI_UPDATE;
-        }
-    }
-    
-    //-*-* switch state after pressing Enter or right click
-    if (
-      button == CURSOR_SELECT ||
-      button == RIGHT_BUTTON &&
-      yg <= y && y < yg + ts*h && xg <= x && x < xg + ts*w
-    ) {
-        //-*-* new appearance
-        if (! ui->hshow) {
-            ui->hshow = true;
-            ui->conf0 = grid[ui->hy][ui->hx];
-            return MOVE_UI_UPDATE;
-        }
+        
+    //-*-* set state with mouse click
+    if (button == LEFT_BUTTON && INGRID(y, x, yg, xg, h, w, ts)) {
+        yy = GRID_YX(y, yg, ts);  xx = GRID_YX(x, xg, ts);
+        
+       //-*-* hide cursor
+        ui->hshow = false;
+        
         //-*-* switch cell state
-        else if (
-          init[ui->hy][ui->hx] == UNDEF && 
-          (grid[ui->hy][ui->hx] + 3) % 9 - 2 != ui->conf0
-        ) {
-            sprintf(
-              move, "y%dx%dz%d", ui->hy, ui->hx, 
-              (grid[ui->hy][ui->hx] + 3) % 9 - 2
-            );
+        if (init[yy][xx] == UNDEF) {
+            if (grid[yy][xx] == UNDEF) {
+                if      (button == RIGHT_BUTTON) conf = VACANT;
+                else if (button == LEFT_BUTTON)  conf = OCCUP;
+            }
+            else                                 conf = UNDEF;
+            sprintf(move, "y%dx%dz%d", yy, xx, conf);
             return dupstr(move);
-        }
-        //-*-* switch cell state if init == OCCUP
-        else if (
-          init[ui->hy][ui->hx] == OCCUP && 
-          (grid[ui->hy][ui->hx] + 1) % 7 != ui->conf0
-        ) {
-            sprintf(
-              move, "y%dx%dz%d", ui->hy, ui->hx, 
-              (grid[ui->hy][ui->hx] + 1) % 7
-            );
-            return dupstr(move);
-        }
-        //-*-* hide
-        else {
-            ui->hshow = false;
-            return MOVE_UI_UPDATE;
         }
     }
     
@@ -1222,95 +1148,73 @@ static game_state *execute_move(const game_state *oldstate, const char *move)
 {
     int h = oldstate->init_state->H, w = oldstate->init_state->W;  
     int ships_sum = oldstate->init_state->ships_sum;
-    int *sy, *sx, *sz;
-    int i;
-	
-    //-*-* Solve button pressed
-    if (move[0] == 'S') {
-	    sy = snewn(ships_sum, int); 
-	    sx = snewn(ships_sum, int); 
-	    sz = snewn(ships_sum, int); 
-    }
-    
+    int sy[ships_sum], sx[ships_sum], sz[ships_sum]; 
+    int isy = 0, isx = 0, isz = 0;
+    int dy[2], dx[2], idx = 0, idy = 0;
+    bool clear;
+    int i, j;
+	    
     int y = -10, x = -10, z = -10, r = -10, c = -10;	    
 	char const *p = move;
+	int atoi_p;
     while (*p) {
-        if (*p == 'y') {
+        if (*p == 'd') {
             p++;
+            atoi_p = atoi(p);
             //-*-* validate for possibly corrupted load file
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > h - 1 || atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-                return NULL;
-            }
+            if (BADSTRING(p, atoi_p, 0, 2)) return NULL;
             else {
-                y = atoi(p);
-                if (move[0] == 'S') *(sy++) = y;
+                clear = atoi_p;
+                while (*p && isdigit(*p)) p++;
+            }
+        }
+        else if (*p == 'y') {
+            p++;
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, h)) return NULL;
+            else {
+                y = atoi_p;
+                if (move[0] == 'S' && isy < ships_sum) sy[isy++] = y;
+                if (move[0] == 'd' && idy < 2)         dy[idy++] = y;
                 while (*p && isdigit(*p)) p++;
             }
         }
         else if (*p == 'x') {
             p++;
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > w - 1 || atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-               return NULL;
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, w)) return NULL;
             else {
-                x = atoi(p);
-                if (move[0] == 'S') *(sx++) = x;
+                x = atoi_p;
+                if (move[0] == 'S' && isx < ships_sum) sx[isx++] = x;
+                if (move[0] == 'd' && idx < 2)         dx[idx++] = x;
                 while (*p && isdigit(*p)) p++;
             }
         }
         else if (*p == 'z') {
             p++;
-            if (
-              *p &&  (
-                atoi(p) < -2 || atoi(p) > 6 || atoi(p) == 0 && *p != '0'
-              )  || 
-              ! *p
-            ) {
-                return NULL;
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, -2, 7)) return NULL;
             else {
-                z = atoi(p);
-                if (move[0] == 'S') *(sz++) = z;
+                z = atoi_p;
+                if (move[0] == 'S' && isz < ships_sum) sz[isz++] = z;
                 while (*p && isdigit(*p)) p++;
             }
         }
         else if (*p == 'r') {
             p++;
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > h - 1 || atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-               return NULL;
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, h)) return NULL;
             else {
-                r = atoi(p);
+                r = atoi_p;
                 while (*p && isdigit(*p)) p++;
             }
         }
         else if (*p == 'c') {
             p++;
-            if (
-              *p &&  (
-                atoi(p) < 0 || atoi(p) > w - 1 || atoi(p) == 0 && *p != '0'
-              )   || 
-              ! *p
-            ) {
-               return NULL;
-            }
+            atoi_p = atoi(p);
+            if (BADSTRING(p, atoi_p, 0, w)) return NULL;
             else {
-                c = atoi(p);
+                c = atoi_p;
                 while (*p && isdigit(*p)) p++;
             }
         }
@@ -1318,21 +1222,27 @@ static game_state *execute_move(const game_state *oldstate, const char *move)
     }
 
     
-    if ((y == -10 || x == -10 || z == -10) && r == -10 && c == -10) {
-        return NULL;
-    }
+    if (
+      (y == -10 || x == -10 || z == -10 && move[0] != 'd') && 
+      r == -10 && c == -10
+    ) return NULL;
+    
 
     game_state *state;
     state = dup_game(oldstate);
         
+    //-*-* Solve button pressed
     if (move[0] == 'S') {
+    
+        if (isy < ships_sum || isx < ships_sum || isz < ships_sum)
+          return NULL
+        ;
     
 	    memcpy(
 	      *(state->grid_state), *(state->init_state->init),
 	      sizeof(**(state->init_state->init))*h*w
 	    );
 	    
-	    sy -= ships_sum; sx -= ships_sum; sz -= ships_sum; 
 	    for (i = 0; i < ships_sum; i++) {
 	        state->grid_state [sy[i]][sx[i]] = sz[i];
 	    }
@@ -1343,25 +1253,47 @@ static game_state *execute_move(const game_state *oldstate, const char *move)
 	    	;
 		}
 	        
-	    state->cheated = true;
-	    
-		sfree(sy); sfree(sx); sfree(sz); 
+	    state->cheated = true;	    
 	}
 	    
+    //-*-* right drag/click
+    else if (move[0] == 'd') {
+    
+        if (idy < 2 || idx < 2 || dy[0] != dy[1] && dx[0] != dx[1]) 
+          return NULL
+        ;
+        
+        for (i = min(dy[0], dy[1]); i <= max(dy[0], dy[1]); i++) {
+            for (j = min(dx[0], dx[1]); j <= max(dx[0], dx[1]); j++) {
+                if (
+                  clear && state->init_state->init [i][j] == UNDEF &&
+                   state->grid_state [i][j] == VACANT
+                ) 
+	              state->grid_state [i][j] = UNDEF
+	            ;
+	            if (! clear && state->grid_state [i][j] == UNDEF)
+	              state->grid_state [i][j] = VACANT
+	            ;
+            }
+        }
+        
+    }
+    
+    //-*-* single move
     else {
 	    if (y != -10 && x != -10 && z != -10) {
 	        if (state->init_state->init [y][x] == UNDEF) {
 	            state->grid_state [y][x] = z;
 	        }
-	        else if (state->init_state->init [y][x] == OCCUP) 
-	          state->grid_state [y][x] = max(z, state->init_state->init [y][x])
-	        ;
 	        else state->grid_state [y][x] = state->init_state->init [y][x];
 	    }
 	    else if (r != -10) state->rows_state[r] = ! oldstate->rows_state[r];
 	    else               state->cols_state[c] = ! oldstate->cols_state[c];
 	}
 	
+    //-*-* specify type (1 to 6) of OCCUP cells wherever possible
+    render_grid_conf(h, w, state->grid_state, state->init_state->init, true);
+    
 	bool solved; 
 	validation(state, &solved);
 	state->completed |= solved;
@@ -1379,16 +1311,11 @@ static void game_compute_size(const game_params *params, int tilesize,
 {
     *y = 
       params->H * tilesize + 1 + BORDER_UP(tilesize) + BORDER_DOWN(tilesize) +
-      SUMS_UP(tilesize) + GRID_SPACE(tilesize) + SEGMENTS(tilesize) +
-      SHIPS(tilesize)
+      SUMS_UP(tilesize) + GRID_SPACE(tilesize) + SHIPS(tilesize)
     ;     
     *x = 
-      //-*-* reserve space for 9 segments, see enum Configuration
-      max(
-        params->W * tilesize + 1, 
-        SEGMENTS(tilesize)*9 + 8*(SEGMENT_SPACE(tilesize))
-      )
-      + BORDER_LEFT(tilesize) + BORDER_RIGHT(tilesize) + SUMS_LEFT(tilesize)
+      params->W * tilesize + 1 + BORDER_LEFT(tilesize) +
+      BORDER_RIGHT(tilesize) + SUMS_LEFT(tilesize)
     ;	      
 }
 
@@ -1423,10 +1350,6 @@ static float *game_colours(frontend *fe, int *ncolours)
         ret[COL_FLASH * 3 + i]     = 0.42F;
     }
     
-    ret[COL_OCCUP_FRAME * 3 + 0]=0.0F;
-    ret[COL_OCCUP_FRAME * 3 + 1]=0.3F;
-    ret[COL_OCCUP_FRAME * 3 + 2]=1.0F;
-
     ret[COL_GRID * 3 + 0]=0.0F;
     ret[COL_GRID * 3 + 1]=0.0F;
     ret[COL_GRID * 3 + 2]=0.0F;
@@ -1446,7 +1369,6 @@ static game_drawstate *game_new_drawstate(drawing *dr, const game_state *state)
 
     //-*-* receives the actual tilesize later via game_set_size()
     ds->started = false;
-    ds->hshow   = false;
 
     return ds;
 }
@@ -1464,9 +1386,10 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
                         float animtime, float flashtime)
 {
     int i, j;
-    bool flash = false;
+    bool drag, flash = false;
     int h = state->init_state->H, w = state->init_state->W;  
     int ns = state->init_state->num_ships;
+    int **init = state->init_state->init, **grid = state->grid_state;
     int ts = ds->tilesize;
     char text[16];
     
@@ -1484,9 +1407,9 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
     params.H = h; params.W = w; 
     game_compute_size(&params, ts, ui, &x_pix, &y_pix);
     
-    //-*-* corners of the grid (centered in x direction)
+    //-*-* corners of the grid
     int y1 = BORDER_UP(ts) + SUMS_UP(ts);
-    int x1 = (x_pix - w*ts - 1)/2;
+    int x1 = BORDER_LEFT(ts) + SUMS_LEFT(ts); 
     int y2 = y1 + h*ts;
     int x2 = x1 + w*ts;
     //-*-* save for interpret_move(), game_get_cursor_location()
@@ -1508,73 +1431,62 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
             draw_line(dr, x1 + ts*i, y1, x1 + ts*i, y2, COL_GRID);
         }
     
-        //-*-* segments, see enum Configuration
-        ds->xs  = (x_pix - SEGMENTS(ts)*9 - 8*SEGMENT_SPACE(ts))/2;
-        ds->ys  = y2 + GRID_SPACE(ts) + 1;
-        ds->dxs = SEGMENTS(ts) + SEGMENT_SPACE(ts);
-        for (i = 0; i < 9; i++) {
-            draw_rect_outline(
-              dr, ds->xs + ds->dxs * i, ds->ys, 
-              SEGMENTS(ts), SEGMENTS(ts), COL_SEGMENT_FRAME
-            );
-            if (i-2 != UNDEF) {
-                draw_segment(
-                  dr, i-2, SEGMENTS(ts) - 1, 
-                  ds->xs + ds->dxs * i, ds->ys, 
-                  COL_SEGMENT, (i-2 == VACANT ? COL_BACKGROUND : COL_OCCUP)
-                );
-            }
-        }
-
-        // restore ds if restarted during the game (e.g., resizing)
+        //-*-* restore ds if restarted during the game (e.g., resizing)
         ds->hy = ui->hy;
         ds->hx = ui->hx;
-        ds->hshow = ui->hshow;
         
 	    ds->started = true;
     }
         
-
       
-    //-*-* cursor changes only
-    if (ui->hy != ds->hy || ui->hx != ds->hx || ui->hshow != ds->hshow) {
+    //-*-* cursor moves only
+    if (ui->hshow && ui->hy != ds->hy || ui->hx != ds->hx) {
             
         // redraw old
-        if (ds->hshow) {
-            i = ds->hy;
-            j = ds->hx;
-            draw_cell(
-              dr, state, j, i, ts, x1, y1, false, 
-              state->grid_state_err[i][j], true, false
-            );
-        }
+        i = ds->hy;
+        j = ds->hx;
+        draw_cell(
+          dr, state, j, i, ts, x1, y1, false, 
+          state->grid_state_err[i][j], true, false, false, -2, false
+        );
     
         // redraw new
-        if (ui->hshow) {
-            i = ui->hy;
-            j = ui->hx;
-            draw_cell(
-              dr, state, j, i, ts, x1, y1, true, 
-              state->grid_state_err[i][j], true, false
-            );
-        }
+        i = ui->hy;
+        j = ui->hx;
+        draw_cell(
+          dr, state, j, i, ts, x1, y1, true, 
+          state->grid_state_err[i][j], true, false, false, -2, false
+        );
         
         ds->hy = ui->hy;
         ds->hx = ui->hx;
-        ds->hshow = ui->hshow;
     }
     
-    //-*-* redraw at start or when cursor not changed
+    //-*-* redraw at start or when cursor not moved
     else {
     
         //-*-* fill cells
         for (i = 0; i < h; i++) {
             for (j = 0; j < w; j++) {
-            
+
+                //-*-* show grey cell to change by drag
+                drag = false;            
+                if (ui->drag && init[i][j] == UNDEF  && 
+                  min(ui->drag_sy, ui->drag_ey) <= i && 
+                  i <= max(ui->drag_sy, ui->drag_ey) && 
+                  min(ui->drag_sx, ui->drag_ex) <= j && 
+                  j <= max(ui->drag_sx, ui->drag_ex) &&
+                  (
+                    ui->clear   && grid[i][j] == VACANT ||
+                    ! ui->clear && grid[i][j] == UNDEF
+                  )
+                ) drag = true;
+                
                 draw_cell(
                   dr, state, j, i, ts, x1, y1, 
                   (i == ui->hy && j == ui->hx ? ui->hshow : false), 
-                  state->grid_state_err[i][j], false, flash
+                  state->grid_state_err[i][j], false, drag, ui->clear, 
+                  VACANT, flash
                 );                
             }
         }
@@ -1626,14 +1538,13 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
         
         //-*-* character edge correction
         draw_rect(
-          dr, 0, y2 + GRID_SPACE (ts) + SEGMENTS(ts) + 1,
-          x_pix, SHIPS(ts), COL_BACKGROUND
+          dr, 0, y2 + GRID_SPACE (ts) + 1, x_pix, SHIPS(ts), COL_BACKGROUND
         );
         int dx_ships = 
           (x_pix - BORDER_LEFT(ts) - BORDER_RIGHT(ts)) / 
           (state->init_state->num_ships + 2)
         ;
-        int y_ships = y2 + GRID_SPACE (ts) + SEGMENTS(ts) + SHIPS(ts)/2;
+        int y_ships = y2 + GRID_SPACE (ts) + SHIPS(ts)/2;
         sprintf(text, "ships:");
         draw_text(
           dr, BORDER_LEFT(ts) + dx_ships, y_ships, FONT_VARIABLE,
@@ -1650,7 +1561,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
               ), 
               ALIGN_VCENTRE | ALIGN_HCENTRE, 
               (
-                 *(state->ships_err) ? COL_ERROR : 
+                 state->ships_err ? COL_ERROR : 
                  (state->ships_state[i] ? COL_DONE_SHIPS : COL_SHIPS)
               ), 
               text
@@ -1670,8 +1581,9 @@ static float game_anim_length(const game_state *oldstate,
 
 
 /*-*-* completion flash */
-static float game_flash_length(const game_state *oldstate,
-                               const game_state *newstate, int dir, game_ui *ui)
+static float game_flash_length(
+  const game_state *oldstate, const game_state *newstate, int dir, game_ui *ui
+)
 {
     if (!oldstate->completed && newstate->completed &&
 	!oldstate->cheated && !newstate->cheated)
@@ -1710,7 +1622,7 @@ static void game_print_size(const game_params *params, const game_ui *ui,
     int pw, ph, ts = TILE_SIZE_PAPER*100;
     game_compute_size(params, ts, ui, &pw, &ph);
     *x = pw / 100.0F;
-    *y = (ph - SEGMENTS(ts)) / 100.0F;  //-*-* segments will not be printed
+    *y = ph / 100.0F;  
 }
 
 
@@ -1731,9 +1643,9 @@ static void game_print(drawing *dr, const game_state *state, const game_ui *ui,
     
     print_line_width(dr, ts/40);
     
-    //-*-* corners of the grid (centered in x direction)
+    //-*-* corners of the grid 
     int y1 = BORDER_UP(ts) + SUMS_UP(ts);
-    int x1 = (x_pix - w*ts - 1)/2;
+    int x1 = BORDER_LEFT(ts) + SUMS_LEFT(ts); 
     int y2 = y1 + h*ts;
     int x2 = x1 + w*ts;
     
@@ -1878,148 +1790,93 @@ into init_ext.
 static void solver_init(const int h, const int w, int **init_ext) 
 {
     int i, j;
-
+    
     for (i = 0; i < h; i++) {
         for (j = 0; j < w; j++) {
         
-            switch (init_ext[i][j]) {
-            
-                // NORTH: all neighbors except South blocked; South occupied
-                case NORTH:
-                    if (0 <= i-1) {
-                        if (0 <= j-1) init_ext[i-1][j-1] = VACANT;
-                        init_ext[i-1][j] = VACANT;
-                        if (j+1 < w)  init_ext[i-1][j+1] = VACANT;
-                    }
-                    if (0 <= j-1) init_ext[i][j-1] = VACANT;
-                    if (j+1 < w)  init_ext[i][j+1] = VACANT;
-                    if (i+1 < h) { // protect against error in init
-                        if (0 <= j-1) init_ext[i+1][j-1] = VACANT;
-                        init_ext[i+1][j] = max(init_ext[i+1][j], OCCUP);
-                        if (j+1 < w)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    break;
-                    
-                case EAST:
-                    if (0 <= j-1) {
-                        if (0 <= i-1) init_ext[i-1][j-1] = VACANT;
-                        init_ext[i][j-1] = max(init_ext[i][j-1], OCCUP);
-                        if (i+1 < h)  init_ext[i+1][j-1] = VACANT;
-                    }
-                    if (0 <= i-1) init_ext[i-1][j] = VACANT;
-                    if (i+1 < h)  init_ext[i+1][j] = VACANT;
-                    if (j+1 < w) { 
-                        if (0 <= i-1) init_ext[i-1][j+1] = VACANT;
-                        init_ext[i][j+1] = VACANT;
-                        if (i+1 < h)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    break;
-                    
-                case SOUTH:
-                    if (0 <= i-1) {
-                        if (0 <= j-1) init_ext[i-1][j-1] = VACANT;
-                        init_ext[i-1][j] = max(init_ext[i-1][j], OCCUP);
-                        if (j+1 < w)  init_ext[i-1][j+1] = VACANT;
-                    }
-                    if (0 <= j-1) init_ext[i][j-1] = VACANT;
-                    if (j+1 < w)  init_ext[i][j+1] = VACANT;
-                    if (i+1 < h) { 
-                        if (0 <= j-1) init_ext[i+1][j-1] = VACANT;
-                        init_ext[i+1][j] = VACANT;
-                        if (j+1 < w)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    break;
-                    
-                case WEST:
-                    if (0 <= j-1) {
-                        if (0 <= i-1) init_ext[i-1][j-1] = VACANT;
-                        init_ext[i][j-1] = VACANT;
-                        if (i+1 < h)  init_ext[i+1][j-1] = VACANT;
-                    }
-                    if (0 <= i-1) init_ext[i-1][j] = VACANT;
-                    if (i+1 < h)  init_ext[i+1][j] = VACANT;
-                    if (j+1 < w) { 
-                        if (0 <= i-1) init_ext[i-1][j+1] = VACANT;
-                        init_ext[i][j+1] = max(init_ext[i][j+1], OCCUP);
-                        if (i+1 < h)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    break;
-                    
-                // ONE: all neighbors blocked
-                case ONE:
-                    if (0 <= i-1) {
-                        if (0 <= j-1) init_ext[i-1][j-1] = VACANT;
-                        init_ext[i-1][j] = VACANT;
-                        if (j+1 < w)  init_ext[i-1][j+1] = VACANT;
-                    }
-                    if (0 <= j-1) init_ext[i][j-1] = VACANT;
-                    if (j+1 < w)  init_ext[i][j+1] = VACANT;
-                    if (i+1 < h) { 
-                        if (0 <= j-1) init_ext[i+1][j-1] = VACANT;
-                        init_ext[i+1][j] = VACANT;
-                        if (j+1 < w)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    break;
-                    
-                // INNER: diagonal neighbors blocked; if North or South
-                // occupied (blocked), then East and West blocked (occupied)
-                // and vice versa
-                case INNER:
-                
-                    if (0 <= i-1) {
-                        if (0 <= j-1) init_ext[i-1][j-1] = VACANT;
-                        if (j+1 < w)  init_ext[i-1][j+1] = VACANT;
-                    }
-                    if (i+1 < h) { 
-                        if (0 <= j-1) init_ext[i+1][j-1] = VACANT;
-                        if (j+1 < w)  init_ext[i+1][j+1] = VACANT;
-                    }
-                    
-                    if (
-                      0 <= j-1 && init_ext[i][j-1] >= 0 ||
-                      j+1 < w  && init_ext[i][j+1] >= 0
-                    ) {
-                        if (0 <= i-1) init_ext[i-1][j] = VACANT;
-                        if (i+1 < h)  init_ext[i+1][j] = VACANT;
-                    }
-                    else if (
-                      0 <= j-1 && init_ext[i][j-1] == VACANT ||
-                      j+1 < w  && init_ext[i][j+1] == VACANT ||
-                      j == 0 || j == w-1
-                    ) {
-                        if (0 <= i-1) 
-                          init_ext[i-1][j] = max(init_ext[i-1][j], OCCUP)
-                        ;
-                        if (i+1 < h) 
-                          init_ext[i+1][j] = max(init_ext[i+1][j], OCCUP)
-                        ;
-                    }
-                    
-                    if (
-                      0 <= i-1 && init_ext[i-1][j] >= 0 ||
-                      i+1 < h  && init_ext[i+1][j] >= 0
-                    ) {
-                        if (0 <= j-1) init_ext[i][j-1] = VACANT;
-                        if (j+1 < w)  init_ext[i][j+1] = VACANT;
-                    }
-                    else if (
-                      0 <= i-1 && init_ext[i-1][j] == VACANT ||
-                      i+1 < h  && init_ext[i+1][j] == VACANT ||
-                      i == 0 || i == h-1
-                    ) {
-                        if (0 <= j-1) 
-                          init_ext[i][j-1] = max(init_ext[i][j-1], OCCUP)
-                        ;
-                        if (j+1 < w)
-                          init_ext[i][j+1] = max(init_ext[i][j+1], OCCUP)
-                        ;
-                    }
+            // NORTH, SOUTH, EAST, WEST, e.g. in case of NORTH,
+            // all neighbors except South blocked; South occupied
+            #define CASE_NSEW(i, j, h, w, conf, mat, m)                      \
+                if (mat((i), (j), m, h, w) == conf) {                        \
+                    if (0 <= (i)-1) {                                        \
+                        if (0 <= (j)-1) mat((i)-1, (j)-1, m, h, w) = VACANT; \
+                        mat((i)-1, (j), m, h, w) = VACANT;                   \
+                        if ((j)+1 < w)  mat((i)-1, (j)+1, m, h, w) = VACANT; \
+                    }                                                        \
+                    if (0 <= (j)-1) mat((i), (j)-1, m, h, w) = VACANT;       \
+                    if ((j)+1 < w)  mat((i), (j)+1, m, h, w) = VACANT;       \
+                    if ((i)+1 < h) {                                         \
+                        if (0 <= (j)-1) mat((i)+1, (j)-1, m, h, w) = VACANT; \
+                        mat((i)+1, (j), m, h, w) = max(                      \
+                          mat((i)+1, (j), m, h,  w), OCCUP                   \
+                        );                                                   \
+                        if ((j)+1 < w) mat((i)+1, (j)+1, m, h, w) = VACANT;  \
+                    }                                                        \
+                }
+            // apply the above with rotation symmetry transformations
+            CASE_NSEW(i,     j,     h, w, NORTH, MAT_0, init_ext);  
+            CASE_NSEW(w-1-j, i,     w, h, EAST,  MAT_1, init_ext);  
+            CASE_NSEW(h-1-i, w-1-j, h, w, SOUTH, MAT_2, init_ext);   
+            CASE_NSEW(j,     h-1-i, w, h, WEST,  MAT_3, init_ext);              
+            #undef CASE_NSEW
+
+
+            // ONE: all neighbors blocked
+            if (init_ext[i][j] == ONE) { 
+                if (0 <= i-1) {
+                    if (0 <= j-1) init_ext[i-1][j-1] = VACANT;
+                    init_ext[i-1][j] = VACANT;
+                    if (j+1 < w)  init_ext[i-1][j+1] = VACANT;
+                }
+                if (0 <= j-1) init_ext[i][j-1] = VACANT;
+                if (j+1 < w)  init_ext[i][j+1] = VACANT;
+                if (i+1 < h) { 
+                    if (0 <= j-1) init_ext[i+1][j-1] = VACANT;
+                    init_ext[i+1][j] = VACANT;
+                    if (j+1 < w)  init_ext[i+1][j+1] = VACANT;
+                }
             }
+
+
+            // INNER: diagonal neighbors blocked; if North or South
+            // occupied (blocked), then East and West blocked (occupied)
+            // and vice versa
+            #define CASE_INNER(i, j, h, w, mat, m)                         \
+                if (mat((i), (j), m, h, w) == INNER) {                     \
+                    if (0 <= (i)-1 && 0 <= (j)-1)                          \
+                      mat((i)-1, (j)-1, m, h, w) = VACANT                  \
+                    ;                                                      \
+                    if (0 <= (j)-1 && mat((i), (j)-1, m, h, w) >= 0) {     \
+                        if (0 <= (i)-1) mat((i)-1, (j), m, h, w) = VACANT; \
+                        if ((i)+1 < h)  mat((i)+1, (j), m, h, w) = VACANT; \
+                    }                                                      \
+                    else if (                                              \
+                      (j) == 0 || mat((i), (j)-1, m, h, w) == VACANT       \
+                    ) {                                                    \
+                        if (0 <= (i)-1)                                    \
+                          mat((i)-1, (j), m, h, w) = max(                  \
+                            mat((i)-1, (j), m, h, w), OCCUP                \
+                          )                                                \
+                        ;                                                  \
+                        if ((i)+1 < h)                                     \
+                          mat((i)+1, (j), m, h, w) = max(                  \
+                            mat((i)+1, (j), m, h, w), OCCUP                \
+                          )                                                \
+                        ;                                                  \
+                    }                                                      \
+                }
+            CASE_INNER(i,     j,     h, w, MAT_0, init_ext);  
+            CASE_INNER(w-1-j, i,     w, h, MAT_1, init_ext);  
+            CASE_INNER(h-1-i, w-1-j, h, w, MAT_2, init_ext);   
+            CASE_INNER(j,     h-1-i, w, h, MAT_3, init_ext);              
+            #undef CASE_INNER
+            
         }
     }
 
+
     // OCCUP: diagonal neighbors blocked (separate loop, because, in the
-    // loop above further cells can be labeled occupied)
+    // loop above, further cells can be labeled occupied)
     for (i = 0; i < h; i++) {
         for (j = 0; j < w; j++) {
             if (init_ext[i][j] == OCCUP) {
@@ -2034,7 +1891,7 @@ static void solver_init(const int h, const int w, int **init_ext)
             }
         }
     }
-        
+            
 }
 
 
@@ -2464,6 +2321,587 @@ static void place_ship(
 }
 
 
+
+/*
+Check if a solution using predefined logical strategies is possible.
+
+
+Parameters:
+  diff: difficulty level;
+  *init_state: constant part of game_state (*ships_distr can be undefined);
+  **grid: h x w array which will be filled with the information 
+determined by the solver (completed or unfinished solution);
+  *occ, *vac: points to the variable with number of occupied / vacant cells
+found by the solver.
+
+Returns 
+  0: solution by simpler strategies is possible;
+  1: solution is only is possible if applying more complex strategies in
+addition to the simpler strategies;
+  2: solution by the predefined strategies is not possible.
+
+NB: Additional strategies are tried for diff > 1 only; for diff = 0, 1,
+the function returns 0 or 2.
+
+*/
+static int solve_by_logic(
+  int diff, const struct game_state_const *init_state, 
+  enum Configuration **grid, int *occ, int *vac
+) 
+{
+    int i, j, k, l, y, x; 
+    int checksum, checksum_init, sum_occ1, sum_occ2, sum_und1, sum_und2;
+    int h = init_state->H, w = init_state->W;
+    int ns = init_state->num_ships;
+    int *ships = init_state->ships;
+    int **init = init_state->init;
+    int ships_sum = init_state->ships_sum;
+    int rows_sum = init_state->rows_sum; 
+    int cols_sum = init_state->cols_sum;
+    int *rows = init_state->rows, *cols = init_state->cols;
+    int distr_all[ships[0]], distr_compl[ships[0]]; 
+    int ship_min, ship_max, num_ship_max;
+    int gap, num_gaps, num_full_gaps, ships_per_gap;
+    
+    // initialize array where the current configuration is kept
+    memcpy(*grid, *init, sizeof(**init)*h*w);
+    
+    // check sum to determine whether grid was changed after 
+    // applying the strategies
+    checksum = 0;
+    for (i = 0; i < h*w; i++) checksum += (*grid)[i]; 
+    
+    // distribution of ship lengths
+    for (k = 0; k < ships[0]; k++) distr_all[k] = 0;
+    for (i = 0; i < ns; i++) (distr_all[ships[i] - 1])++;
+    
+
+    // flags that switch additional strategies and indicate if they helped
+    bool add_strat = false, complex_solve = false;
+    
+    // apply the strategies as long as they work
+    do {      
+        // mark cells next to occupied cells as occupied where possible;
+        // mark cells around occupied cells vacant
+        solver_init(h, w, grid);
+        
+        
+        // try two strategies:
+        // 1. if number of occupied cells of a row/column is equal to 
+        // the sum total (incl. 0), mark the remaining cells vacant;
+        // 2. if number of unmarked cells in a row/column is equal to 
+        // the row/column sum minus occupied cells, mark the remaining 
+        // cells occupied
+        
+        // rows
+        sum_occ1 = sum_und1 = 0;
+        for (i = 0; i < h; i++) {
+            sum_occ2 = sum_und2 = 0;
+            for (j = 0; j < w; j++) {
+                if (grid[i][j] >= 0) {
+                    if (rows[i] > -1) sum_occ2++;
+                    else              sum_occ1++;
+                }
+                else if (grid[i][j] == UNDEF) {
+                    if (rows[i] > -1) sum_und2++;
+                    else              sum_und1++;
+                }
+            }
+            if (sum_occ2 == rows[i]) {
+                for (j = 0; j < w; j++) 
+                  if (grid[i][j] == UNDEF) grid[i][j] = VACANT
+                ;                    
+            }
+            else if (sum_und2 == rows[i] - sum_occ2) {
+                for (j = 0; j < w; j++) 
+                  if (grid[i][j] == UNDEF) grid[i][j] = OCCUP
+                ;                    
+            }
+        }
+        // rows with hidden sum total
+        if (sum_occ1 == ships_sum - rows_sum) {
+            for (i = 0; i < h; i++) {
+                if (rows[i] == -1) {
+                    for (j = 0; j < w; j++) 
+                      if (grid[i][j] == UNDEF) grid[i][j] = VACANT
+                    ;
+                }
+            }
+        }        
+        else if (sum_und1 == ships_sum - rows_sum - sum_occ1) {
+            for (i = 0; i < h; i++) {
+                if (rows[i] == -1) {
+                    for (j = 0; j < w; j++) 
+                      if (grid[i][j] == UNDEF) grid[i][j] = OCCUP
+                    ;
+                }
+            }
+        }        
+        // columns
+        sum_occ1 = sum_und1 = 0;
+        for (j = 0; j < w; j++) {
+            sum_occ2 = sum_und2 = 0;
+            for (i = 0; i < h; i++) {
+                if (grid[i][j] >= 0) {
+                    if (cols[j] > -1) sum_occ2++;
+                    else              sum_occ1++;
+                }
+                else if (grid[i][j] == UNDEF) {
+                    if (cols[j] > -1) sum_und2++;
+                    else              sum_und1++;
+                }
+            }
+            if (sum_occ2 == cols[j]) {
+                for (i = 0; i < h; i++) 
+                  if (grid[i][j] == UNDEF) grid[i][j] = VACANT
+                ;                    
+            }
+            else if (sum_und2 == cols[j] - sum_occ2) {
+                for (i = 0; i < h; i++) 
+                  if (grid[i][j] == UNDEF) grid[i][j] = OCCUP
+                ;                    
+            }
+        }
+        // columns with hidden sum total
+        if (sum_occ1 == ships_sum - cols_sum) {
+            for (j = 0; j < w; j++) {
+                if (cols[j] == -1) {
+                    for (i = 0; i < h; i++) 
+                      if (grid[i][j] == UNDEF) grid[i][j] = VACANT
+                    ;
+                }
+            }
+        }
+        else if (sum_und1 == ships_sum - cols_sum - sum_occ1) {
+            for (j = 0; j < w; j++) {
+                if (cols[j] == -1) {
+                    for (i = 0; i < h; i++) 
+                      if (grid[i][j] == UNDEF) grid[i][j] = OCCUP
+                    ;
+                }
+            }
+        }        
+        
+        
+        // 3. if a stripe of occupied cells is of the size of 
+        // the longest unfinished ship, mark the cells next to the
+        // end cells vacant
+        
+        // specify the type of occupied cells
+        render_grid_conf(h, w, grid, init, false);
+        
+        // determine the longest unfinished ship size and their number;
+        compl_ships_distr(h, w, grid, ships[0], distr_compl);
+        ship_max = 0;
+        for (i = ships[0] - 1; i >= 0; i--) {
+            if (distr_compl[i] < distr_all[i]) {
+                ship_max = i + 1; 
+                break;
+            }
+        }
+        
+        // find stripes of occupied cells
+        // rows
+        for (i = 0; i < h; i++) {
+            k = 1;
+            for (j = 0; j < w; j++) {
+                if (grid[i][j] >= 0) {
+                    if (k < ship_max) k++;
+                    else if (
+                      ship_max > 1 ||
+                      (i == 0   || grid[i-1][j] < 0) &&
+                      (i == h-1 || grid[i+1][j] < 0) 
+                    ) {
+                        if (j < w-1 && grid[i][j+1] == UNDEF) 
+                          grid[i][j+1] = VACANT
+                        ;
+                        if (j-k >= 0 && grid[i][j-k] == UNDEF) 
+                          grid[i][j-k] = VACANT
+                        ;
+                    }
+                }
+                
+                else k = 1;
+            }
+        }
+        // columns
+        for (j = 0; j < w; j++) {
+            k = 1;
+            for (i = 0; i < h; i++) {
+                if (grid[i][j] >= 0) {
+                    if (k < ship_max) k++;
+                    else if (
+                      ship_max > 1 ||
+                      (j == 0   || grid[i][j-1] < 0) &&
+                      (j == w-1 || grid[i][j+1] < 0) 
+                    ) {
+                        if (i < h-1 && grid[i+1][j] == UNDEF) 
+                          grid[i+1][j] = VACANT
+                        ;
+                        if (i-k >= 0 && grid[i-k][j] == UNDEF) 
+                          grid[i-k][j] = VACANT
+                        ;
+                    }
+                }
+                
+                else k = 1;
+            }
+        }
+
+       
+        // initial check sum
+        checksum_init = checksum;
+        
+        // check if configuration has changed
+        checksum = 0;
+        for (i = 0; i < h*w; i++) checksum += (*grid)[i];
+        
+        // apply additional strategies for a higher difficulty if
+        // the simpler strategies no longer work
+        if (diff > 1) {
+            // turn on/off additional strategies
+            if (checksum == checksum_init) add_strat = ! add_strat;
+            // record if additional strategies caused to 
+            // change the check sum at least once
+            else if (add_strat) complex_solve = true;
+        }
+        if (diff > 1 && add_strat) {
+            // specify the type of occupied cells
+            render_grid_conf(h, w, grid, init, false);
+            
+            
+            // 4. mark cells vacant where the available gaps are shorter
+            // than the shortest unfinished ship
+            
+            // determine the shortest unfinished ship
+            compl_ships_distr(h, w, grid, ships[0], distr_compl);
+            ship_min = 0;
+            for (i = 0; i < ships[0]; i++) {
+                if (distr_compl[i] < distr_all[i]) {
+                    ship_min = i + 1; break;
+                }
+            }
+
+            // determine the gaps
+            for (i = 0; i < h; i++) {for (j = 0; j < w; j++) {
+                if (grid[i][j] == UNDEF) {
+                    // go down
+                    k = 1;
+                    while (
+                      k < ship_min && i+k < h && grid[i+k][j] != VACANT
+                    ) k++;
+                    gap = k;
+                    if (gap >= ship_min) continue;
+                    // go up
+                    k = 1;
+                    while (
+                      gap+k-1 < ship_min && i-k >= 0 && grid[i-k][j] != VACANT 
+                    ) k++;
+                    gap += k-1;
+                    if (gap >= ship_min) continue;
+                    // go right
+                    k = 1;
+                    while (
+                      k < ship_min && j+k < w && grid[i][j+k] != VACANT 
+                    ) k++;
+                    gap = k;
+                    if (gap >= ship_min) continue;
+                    // go left
+                    k = 1;
+                    while (
+                      gap+k-1 < ship_min && j-k >= 0 && grid[i][j-k] != VACANT 
+                    ) k++;
+                    gap += k-1;
+                    if (gap < ship_min) grid[i][j] = VACANT;
+                }
+            }}
+            
+
+            // 5. Determine the number of gaps where the longest 
+            // unfinished ship would fit. Exclude rows and columns
+            // with sum totals smaller than the longest unfinished ship.
+            // If number of gaps is equal to the number of longest 
+            // unfinished ships, fill the gaps as much as possible.
+
+            // determine the longest unfinished ship size and their number;
+            // no need for compl_ships_distr(), because strategy No. 4
+            // cannot generate new completed ships
+            ship_max = num_ship_max = 0;
+            for (i = ships[0] - 1; i >= 0; i--) {
+                if (distr_compl[i] < distr_all[i]) {
+                    ship_max = i + 1; 
+                    num_ship_max = distr_all[i] - distr_compl[i];
+                    break;
+                }
+            }
+            if (ship_max == 1) continue; // more complex logic, won't consider
+            
+            // array to record the gaps; per gap, vert (0/1), y, x, length 
+            int gaps[num_ship_max*4];
+            
+            // determine the number of gaps (conservatively, the upper 
+            // boundary)
+            num_gaps = 0; // count more than once if more than one ships fit
+            num_full_gaps = 0; // count each gap once (capped by num_ship_max)
+            // rows
+            for (i = 0; i < h; i++) { 
+                if (
+                  rows[i] >= ship_max || 
+                  rows[i] == -1 && ships_sum - rows_sum >= ship_max
+                ) {
+                    for (j = 0; j < w; j++) {
+                        if (grid[i][j] == UNDEF) {
+                            // go left
+                            k = 1;
+                            while (j-k >= 0 && grid[i][j-k] != VACANT) k++;
+                            gap = k;
+                            // go right
+                            k = 1;
+                            while (j+k < w && grid[i][j+k] != VACANT) k++;
+                            gap += k-1;
+                            // record
+                            if (
+                              gap >= ship_max && num_full_gaps < num_ship_max
+                            ) {
+                                gaps[num_full_gaps*4    ] = 0;
+                                gaps[num_full_gaps*4 + 1] = i;
+                                gaps[num_full_gaps*4 + 2] = j + k - gap;
+                                gaps[num_full_gaps*4 + 3] = gap;
+                                num_full_gaps++;
+                            }
+                            // upper bound
+                            num_gaps += (int) (gap + 1)/(ship_max + 1); 
+                            // shift to the end of gap
+                            j += k-1;
+                        }
+                    }
+                }
+            }
+            // columns
+            for (j = 0; j < w; j++) {
+                if (
+                  cols[j] >= ship_max || 
+                  cols[j] == -1 && ships_sum - cols_sum >= ship_max
+                ) {
+                    for (i = 0; i < h; i++) {
+                        if (grid[i][j] == UNDEF) {
+                            // go up
+                            k = 1;
+                            while (i-k >= 0 && grid[i-k][j] != VACANT) k++;
+                            gap = k;
+                            // go down
+                            k = 1;
+                            while (i+k < h && grid[i+k][j] != VACANT) k++;
+                            gap += k-1;
+                            if (
+                              gap >= ship_max && num_full_gaps < num_ship_max
+                            ) {
+                                gaps[num_full_gaps*4    ] = 1;
+                                gaps[num_full_gaps*4 + 1] = i + k - gap;
+                                gaps[num_full_gaps*4 + 2] = j;
+                                gaps[num_full_gaps*4 + 3] = gap;
+                                num_full_gaps++;
+                            }
+                            num_gaps += (int) (gap + 1)/(ship_max + 1);
+                            i += k-1;
+                        }
+                    }
+                }
+            }
+            
+            // fill the gaps (as in a nonogram)
+            if (num_gaps == num_ship_max) {
+                for (i = 0; i < num_full_gaps; i++) {
+                    k = (gaps[i*4 + 3] + 1) % (ship_max + 1);
+                    ships_per_gap = (int) (gaps[i*4 + 3] + 1)/(ship_max + 1);
+                    for (j = 0; j < ships_per_gap; j++) {
+                        for (l = 0; l < ship_max; l++) {
+                            y = gaps[i*4+1] + gaps[i*4]*(j*(ship_max+1) + l);
+                            x = 
+                              gaps[i*4+2] + (1-gaps[i*4])*(j*(ship_max+1) + l)
+                            ;
+                            if (l >= k && grid[y][x] == UNDEF) 
+                              grid[y][x] = OCCUP
+                            ;
+                        }
+                    }
+                }
+            }
+                        
+        }
+        
+    } while (checksum != checksum_init || add_strat);
+    
+    // count occupied / vacant cells found
+    *occ = *vac = 0;
+    for (i = 0; i < h*w; i++) {
+        *occ += ((*grid)[i] >= 0);
+        *vac += ((*grid)[i] == -1);
+    }
+    
+    // check if all occupied cells were found
+    if (*occ == ships_sum) {
+        if (diff <= 1 || ! complex_solve) return 0;
+        else                              return 1;
+    }
+    else                                  return 2;
+}
+
+
+
+
+/*
+Where possible, change cell state OCCUP to a specific state 1 to 6, and back.
+
+Parameters:
+  h, w: height, width of the grid;
+  **grid: 2D array of size H x W of grid configuration;
+  **init: 2D array of size H x W of initial grid configuration 
+(disregarded if remove == false);
+  remove: if true, the value of the cell will be set back to OCCUP, if not
+uniquely defined and not fixed by the init array; if false, the value 
+can only be promoted from OCCUP to 1..6.
+
+*/
+static void render_grid_conf(
+  int h, int w, enum Configuration **grid, enum Configuration **init, 
+  bool remove
+)
+{
+    int i, j;
+    enum Configuration **g = grid;
+
+    for (i = 0; i < h; i++) {
+        for (j = 0; j < w; j++) {
+            if (g[i][j] == OCCUP) {
+            
+                // set OCCUP to 1..6
+                if (
+                  (i == 0 || g[i-1][j] == VACANT) && i < h-1 && g[i+1][j] >= 0
+                ) g[i][j] = NORTH;
+                
+                else if (
+                  (i == h-1 || g[i+1][j] == VACANT) && i > 0 && g[i-1][j] >= 0
+                ) g[i][j] = SOUTH;
+                
+                else if (
+                  (j == 0 || g[i][j-1] == VACANT) && j < w-1 && g[i][j+1] >= 0
+                ) g[i][j] = WEST;
+                
+                else if (
+                  (j == w-1 || g[i][j+1] == VACANT) && j > 0 && g[i][j-1] >= 0
+                ) g[i][j] = EAST;              
+                
+                else if (
+                  (i == 0   || g[i-1][j] == VACANT) && 
+                  (i == h-1 || g[i+1][j] == VACANT) &&
+                  (j == 0   || g[i][j-1] == VACANT) &&
+                  (j == w-1 || g[i][j+1] == VACANT) 
+                ) g[i][j] = ONE;              
+                
+                else if (
+                  i > 0 && g[i-1][j] >= 0 && i < h-1 && g[i+1][j] >= 0 ||
+                  j > 0 && g[i][j-1] >= 0 && j < w-1 && g[i][j+1] >= 0
+                ) g[i][j] = INNER;   
+                         
+            }
+           
+            
+            // set back to OCCUP
+            else if (remove && g[i][j] > 0 && init[i][j] <= 0 && 
+              (
+                g[i][j] == NORTH && 
+                (i > 0 && g[i-1][j] != VACANT || g[i+1][j] < 0)
+                ||
+                g[i][j] == SOUTH && 
+                (i < h-1 && g[i+1][j] != VACANT || g[i-1][j] < 0)
+                || 
+                g[i][j] == WEST && 
+                (j > 0 && g[i][j-1] != VACANT || g[i][j+1] < 0)
+                ||
+                g[i][j] == EAST && 
+                (j < w-1 && g[i][j+1] != VACANT || g[i][j-1] < 0)
+                ||
+                g[i][j] == ONE && ! (
+                  (i == 0   || g[i-1][j] == VACANT) &&
+                  (i == h-1 || g[i+1][j] == VACANT) &&
+                  (j == 0   || g[i][j-1] == VACANT) &&
+                  (j == w-1 || g[i][j+1] == VACANT) 
+                )
+                ||
+                g[i][j] == INNER && ! (
+                  i > 0 && g[i-1][j] >= 0 && i < h-1 && g[i+1][j] >= 0 ||
+                  j > 0 && g[i][j-1] >= 0 && j < w-1 && g[i][j+1] >= 0
+                )
+              )
+            ) g[i][j] = OCCUP;
+           
+        }
+    }
+    
+    
+}
+
+
+
+/*
+Search for completed ships and determine their size distribution.
+
+Parameters:
+  h, w: height, width of the grid;
+  **grid: 2D array of size H x W of grid configuration;
+  max_size: the largest ship searched for (given by ships[0], the 0th element
+of the array of ship lengths); larger completed ships will be ignored;
+  *distr: array of size max_size of size distribution; in distr[i] the
+number of completed ships of length i+1 will be saved.
+
+The function returns "true" (error) if max_size is exceeded, otherwise 
+"false".
+
+*/
+static bool compl_ships_distr(
+  int h, int w, int **grid, int max_size, int *distr
+)
+{
+    int i, j, k;
+    bool err = false;
+    int **g = grid;
+    
+    for (k = 0; k < max_size; k++) distr[k] = 0;
+    
+    // determine completed ships that start with NORTH
+    // or WEST and end with SOUTH or EAST, also ONE-ships
+    for (i = 0; i < h; i++) {
+        for (j = 0; j < w; j++) {
+        
+            if (i < h-1 && g[i][j] == NORTH) {
+                k = 0;
+                do {k++;} 
+                  while (i+k < h-1 && g[i+k][j] == INNER && k < max_size-1)
+                ; 
+                if (g[i+k][j] == SOUTH) (distr[k])++;
+                else if (g[i+k][j] == INNER) err = true;
+            }
+            
+            else if (j < w-1 && g[i][j] == WEST) {
+                k = 0;
+                do {k++;} 
+                  while (j+k < w-1 && g[i][j+k] == INNER && k < max_size-1)
+                ; 
+                if (g[i][j+k] == EAST) (distr[k])++;
+                else if (g[i][j+k] == INNER) err = true;
+            }
+            
+            else if (g[i][j] == ONE) (distr[0])++;
+            
+        }
+    }
+    
+    return err;
+}
+
+
+
 /*
 Generate puzzle with given difficulty. 
 
@@ -2484,7 +2922,7 @@ static void generator_diff(
   int *rows, int *cols, enum Configuration **init
 )
 {
-    int i, j, k, ship_ex, change, ex, num_init, num_wrong;
+    int i, j, k, ship_ex, change, ex, num_init, num_wrong, log_solve;
     bool err, flag_break;
     int h = params->H, w = params->W, diff = params->diff;
     int *ns = num_ships;
@@ -2495,7 +2933,9 @@ static void generator_diff(
     if (min(h, w) == 7) {
         *ns = 7;  
         *ships = snewn(*ns, int);
-        memcpy(*ships, (int[]) {4, 4, 3, 3, 2, 2, 1}, sizeof(int)*(*ns));
+        (*ships)[0] = (*ships)[1] = 4;
+        (*ships)[2] = (*ships)[3] = 3;
+        (*ships)[4] = (*ships)[5] = (*ships)[6] = 2;
     }
     else {
         // number of ships 7 or 8
@@ -2596,9 +3036,8 @@ static void generator_diff(
 
     //****** define parameters for puzzle generation
     
-    // target solver count (difficulty 0 -> elements 0, 1, ...,
-    // difficulty 3 -> elements 6, 7)
-    int solver_count_int [8] = {1, 20, 10, 40, 30, 60, 100, 600};
+    // target solver count for difficulty 3 (min, max)
+    int solver_count_int [2] = {50, 600};
     // values of array specify how many cells of the type -1/0/(1..6), 
     // respectively, are initially disclosed
     int ini_cells[3];
@@ -2632,17 +3071,17 @@ static void generator_diff(
             ini_cells[2] = type_12 - type_1;
             break;
         case ADVANCED:
-            sums_ex = round((h + w)*.2) + random_upto(rs, 2);
-            ini_cells[0] = 0; // no cells of type -1
-            type_12 = round(num_cells*0.12);
+            sums_ex = round((h + w)*.1) + random_upto(rs, 2);
+            ini_cells[0] = round((h*w - num_cells)*0.05);
+            type_12 = round(num_cells*0.2);
             type_1 = random_upto(rs, type_12); // 0, ..., type_12 - 1
-            ini_cells[1] = type_1*2;
+            ini_cells[1] = type_1*2; 
             ini_cells[2] = type_12 - type_1;
             break;
-        case EXTREME:
-            sums_ex = round((h + w)*.25) + random_upto(rs, 3);
-            ini_cells[0] = 0;
-            type_12 = round(num_cells*0.05);
+        case UNREASONABLE:
+            sums_ex = round((h + w)*.2) + random_upto(rs, 3);
+            ini_cells[0] = 0; // no cells of type -1
+            type_12 = round(num_cells*0.15);
             type_1 = random_upto(rs, type_12 + 1); // 0, ..., type_12
             ini_cells[1] = type_1;  // not multiplied by 2
             ini_cells[2] = type_12 - type_1;
@@ -2774,13 +3213,15 @@ static void generator_diff(
     //****** check solution; adjust disclosed information, if needed
     
     struct sol soln;
-    soln.ship_coord  = snewn(*ns, int*);
-    soln.ship_coord2 = snewn(*ns, int*);
-    soln.ship_coord[0]  = snewn(*ns*3, int);
-    soln.ship_coord2[0] = snewn(*ns*3, int);
-    for (i = 1; i < *ns; i++) {
-        soln.ship_coord[i]  = soln.ship_coord[0]  + i*3;
-        soln.ship_coord2[i] = soln.ship_coord2[0] + i*3;
+    if (diff == 3) {
+        soln.ship_coord  = snewn(*ns, int*);
+        soln.ship_coord2 = snewn(*ns, int*);
+        soln.ship_coord[0]  = snewn(*ns*3, int);
+        soln.ship_coord2[0] = snewn(*ns*3, int);
+        for (i = 1; i < *ns; i++) {
+            soln.ship_coord[i]  = soln.ship_coord[0]  + i*3;
+            soln.ship_coord2[i] = soln.ship_coord2[0] + i*3;
+        }
     }
     
     struct game_state_const init_state;
@@ -2792,11 +3233,21 @@ static void generator_diff(
     init_state.rows      = rows;
     init_state.cols      = cols;
     init_state.ships_sum = num_cells;
+    
+    // array where the resulting configuration from logical solver is written
+    int *grid[h], grid_[h*w];
+    for (i = 0; i < h; i++) {
+        grid[i] = grid_ + i*w;
+    }
+    // variables where the number of occupied/vacant cells found 
+    // by the logical solver is written
+    int occ, vac;
         
     bool fast_return = false;
+    int try_before_fast_return = 0;
     
     while (true) {
-    
+
         init_state.rows_sum  = 0;
         for (i = 0; i < h; i++) {
             if (rows[i] > -1) init_state.rows_sum += rows[i];
@@ -2806,72 +3257,89 @@ static void generator_diff(
             if (cols[j] > -1) init_state.cols_sum += cols[j];
         }
     
-        solver(&init_state, solver_count_int[diff*2+1], &soln);
+        // check if a unique solution exists 
+        // logical solver
+        log_solve = solve_by_logic(diff, &init_state, grid, &occ, &vac);
+        // for unreasonable level solve with general solver
+        if (diff == 3) solver(&init_state, solver_count_int[diff*2+1], &soln);
         
-        // solver returns no error
-        if (soln.err == 0) {
-            // check lower count limit (upper limit ok, because no error),
-            // return if ok or fast_return = true
-            if (soln.count >= solver_count_int[diff*2] || fast_return) return;
+               
+        // unique solution exists, difficulty ok or fast_return = true
+        if (
+          diff <= 1 && log_solve == 0  ||
+          diff == 2 && (log_solve == 1 || log_solve == 0 && fast_return) ||
+          diff == 3 && soln.err == 0 && 
+            (
+              soln.count >= solver_count_int[0] && log_solve == 2 ||
+              fast_return
+            )
+        ) return;
             
-            // soln.count below lower limit: increase difficulty
-            else {
-                change = random_upto(rs, 2);
+            
+        // unique solution exists, but too easy: increase difficulty
+        else if (
+          diff == 2 && log_solve == 0 ||
+          diff == 3 && soln.err == 0 && (
+            soln.count < solver_count_int[0] || log_solve < 2
+          )
+        ) {
+        
+            change = random_upto(rs, 2);
                 
-                // increase sums_ex by 1
-                if (change == 0 && h + w - sums_ex > 0) {
-                    ex = random_upto(rs, h + w - sums_ex);
-                    k = 0;
-                    for (j = 0; j < h; j++) {
-                        if (rows[j] != -1) {
-                            if (k == ex) {rows[j] = -1; break;}
+            // increase sums_ex by 1
+            if (change == 0 && h + w - sums_ex > 0) {
+                ex = random_upto(rs, h + w - sums_ex);
+                k = 0;
+                for (j = 0; j < h; j++) {
+                     if (rows[j] != -1) {
+                        if (k == ex) {rows[j] = -1; break;}
+                        else k++;
+                    }
+                }
+                if (k < ex) {
+                    for (j = h; j < h+w; j++) {
+                        if (rows[j-h] != -1) {
+                            if (k == ex) {rows[j-h] = -1; break;}
                             else k++;
                         }
                     }
-                    if (k < ex) {
-                        for (j = h; j < h+w; j++) {
-                            if (rows[j-h] != -1) {
-                                if (k == ex) {rows[j-h] = -1; break;}
-                                else k++;
-                            }
-                        }
-                    }
-                    sums_ex++;
                 }
+                sums_ex++;
+            }
                 
-                // change one element of init to -2
-                else {
-                    num_init = ini_cells[0] + ini_cells[1] + ini_cells[2];
-                    if (num_init > 0) {
-                        ex = random_upto(rs, num_init);
-                        k = 0;
-                        for (i = 0; i < h*w; i++) {
-                            if ((*init)[i] != UNDEF) {
-                                if (k == ex) {
-                                    if ((*init)[i] == VACANT) 
-                                      (ini_cells[0])--
-                                    ;
-                                    else if ((*init)[i] == OCCUP)
-                                      (ini_cells[1])--
-                                    ;
-                                    else (ini_cells[2])--;
-                                    (*init)[i] = UNDEF;
-                                    break;
+            // change one element of init to -2
+            else {
+                num_init = ini_cells[0] + ini_cells[1] + ini_cells[2];
+                if (num_init > 0) {
+                    ex = random_upto(rs, num_init);
+                    k = 0;
+                    for (i = 0; i < h*w; i++) {
+                        if ((*init)[i] != UNDEF) {
+                            if (k == ex) {
+                                if ((*init)[i] == VACANT) 
+                                  (ini_cells[0])--
+                                ;
+                                else if ((*init)[i] == OCCUP)
+                                  (ini_cells[1])--
+                                ;
+                                else (ini_cells[2])--;
+                                (*init)[i] = UNDEF;
+                                break;
                                 }
                                 else k++;
-                            }
                         }
                     }
                 }
             }
+            
         }
         
         
-        // solver returns error code 2, i.e., more than one solution:
-        // set init = VACANT at one cell, which is actually vacant, but
-        // the solver yields "occupied"; return as soon as soln.count
-        // is below the upper limit (set fast_return = true)
-        else if (soln.err == 2) {
+        // more than one solution (diff == 3): set init = VACANT at one cell, 
+        // which is actually vacant, but the solver yields "occupied"; 
+        // return as soon as soln.count is below the upper limit 
+        // (set fast_return = true)
+        else if (diff == 3 && soln.err == 2) {
             fast_return = true;
             
             // number of "wrong" cells
@@ -2912,7 +3380,10 @@ static void generator_diff(
                             (ini_cells[0])++;
                             if (
                               ship_pos 
-                                [soln.ship_coord[k][1]+i*soln.ship_coord[k][0]] 
+                                [
+                                  soln.ship_coord[k][1]
+                                  +i*soln.ship_coord[k][0]
+                                ] 
                                 [
                                   soln.ship_coord[k][2]
                                   +i*(1-soln.ship_coord[k][0])
@@ -2953,13 +3424,14 @@ static void generator_diff(
         }
         
         
-        // solver returns error 1, i.e., soln.count above upper limit:
-        // decrease difficulty, return as soon as soln.count
-        // is below the upper limit (set fast_return = true) 
+        // no solution found or too difficult:
+        // decrease difficulty, return as soon as not too difficult 
+        // (set fast_return = true) 
         else {
-            fast_return = true;
+            try_before_fast_return++;
+            if (try_before_fast_return > 0) fast_return = true;
             
-            change = random_upto(rs, 2);
+            change = random_upto(rs, 5);
             
             // decrease sums_ex by 1
             if (change == 0 && sums_ex > 0) {
@@ -2975,16 +3447,47 @@ static void generator_diff(
                     for (j = h; j < h+w; j++) {
                         if (cols[j-h] == -1) {
                             if (k == ex) {cols[j-h] = cols0[j-h]; break;}
-                            else k++;
+                            k++;
                         }
                     }
                 }
                 sums_ex--;
             }
             
-            // change one element of init from UNDEF or OCCUP to 1 .. 6
+            // change one element of init from UNDEF to VACANT;
+            // in case of logical solution change elements not found by solver
+            else if (change < 4) {
+                if (diff <= 2) num_init = h*w - num_cells - vac;
+                else           num_init = h*w - num_cells - ini_cells[0];
+                k = 0;
+                if (num_init > 0) {
+                    ex = random_upto(rs, num_init);
+                    flag_break = false;
+                    for (i = 0; i < h; i++) {
+                        for (j = 0; j < w; j++) {
+                            if (
+                              (  diff <= 2 && grid[i][j] == UNDEF || 
+                                 diff == 3 && init[i][j] == UNDEF   ) &&
+                              ! ship_pos[i][j]
+                            ) {
+                                if (k == ex) {
+                                    init[i][j] = VACANT; 
+                                    flag_break = true;
+                                    (ini_cells[0])++;
+                                    break;
+                                }
+                                k++;
+                            }
+                        }
+                        if (flag_break) break;
+                    }
+                }
+            }
+            
+            // change one element of init from UNDEF to 1 .. 6
             else {
-                num_init = num_cells - ini_cells[2];
+                if (diff <= 2) num_init = num_cells - occ;
+                else      num_init = num_cells - ini_cells[1] - ini_cells[2];
                 if (num_init > 0) {
                     ex = random_upto(rs, num_init);
                     j = 0;
@@ -2992,10 +3495,16 @@ static void generator_diff(
                     for (k = 0; k < *ns; k++) {
                         for (i = 0; i < (*ships)[k]; i++) {
                             if (
+                              diff <= 2 &&
+                              grid 
+                                [ship_coord[k][1]+i*ship_coord[k][0]] 
+                                [ship_coord[k][2]+i*(1-ship_coord[k][0])] 
+                              == UNDEF ||
+                              diff == 3 &&
                               init 
                                 [ship_coord[k][1]+i*ship_coord[k][0]] 
                                 [ship_coord[k][2]+i*(1-ship_coord[k][0])] 
-                              <= 0
+                              == UNDEF
                             ) {
                                 if (j == ex) {
                                     if ((*ships)[k] == 1)
@@ -3032,7 +3541,7 @@ static void generator_diff(
                                       = WEST
                                     ;
                                     else if (
-                                      i == (*ships)[k] - 1 && ship_coord[k][0]
+                                      i == (*ships)[k]-1 && ship_coord[k][0]
                                     )
                                       init 
                                         [ship_coord[k][1]+i*ship_coord[k][0]] 
@@ -3071,10 +3580,12 @@ static void generator_diff(
         
     }
     
-    sfree(soln.ship_coord[0]);
-    sfree(soln.ship_coord2[0]);
-    sfree(soln.ship_coord);
-    sfree(soln.ship_coord2);
+    if (diff == 3) {
+        sfree(soln.ship_coord[0]);
+        sfree(soln.ship_coord2[0]);
+        sfree(soln.ship_coord);
+        sfree(soln.ship_coord2);
+    }
 }
 
 
@@ -3244,14 +3755,12 @@ static void draw_segment(
             elem_size = ts*6/10 + 1;
             shift = max((ts - elem_size - 1)/2, 3);
             elem_size = ts - 1 - 2*shift;
-            memcpy(coords3,
-              (int[]) {
-                xf + (ts - 1)/2 + 1,    yf + shift + 1,
-                xf + shift + 1,         yf + shift + elem_size,
-                xf + shift + elem_size, yf + shift + elem_size
-              },
-              sizeof(*coords3)*6
-            );
+            coords3[0] = xf + (ts - 1)/2 + 1; 
+            coords3[1] = yf + shift + 1;
+            coords3[2] = xf + shift + 1; 
+            coords3[3] = yf + shift + elem_size;
+            coords3[4] = xf + shift + elem_size; 
+            coords3[5] = yf + shift + elem_size;
             draw_polygon(dr, coords3, 3, color, color);
             break;
         case EAST:
@@ -3260,15 +3769,13 @@ static void draw_segment(
             ;
             elem_size = ts*6/10 + 1;
             shift = max((ts - elem_size - 1)/2, 3);
-           elem_size = ts - 1 - 2*shift;
-            memcpy(coords3,
-              (int[]) {
-                xf + shift + 1,         yf + shift + 1,
-                xf + shift + elem_size, yf + (ts - 1)/2 + 1,
-                xf + shift + 1,         yf + shift + elem_size
-              },
-              sizeof(*coords3)*6
-            );
+            elem_size = ts - 1 - 2*shift;
+            coords3[0] = xf + shift + 1; 
+            coords3[1] = yf + shift + 1;
+            coords3[2] = xf + shift + elem_size; 
+            coords3[3] = yf + (ts - 1)/2 + 1;
+            coords3[4] = xf + shift + 1; 
+            coords3[5] = yf + shift + elem_size;
             draw_polygon(dr, coords3, 3, color, color);
             break;
         case SOUTH:
@@ -3278,14 +3785,12 @@ static void draw_segment(
             elem_size = ts*6/10 + 1;
             shift = max((ts - elem_size - 1)/2, 3);
             elem_size = ts - 1 - 2*shift;
-            memcpy(coords3,
-              (int[]) {
-                xf + shift + 1,         yf + shift + 1,
-                xf + shift + elem_size, yf + shift + 1,
-                xf + (ts - 1)/2 + 1,    yf + shift + elem_size
-              },
-              sizeof(*coords3)*6
-            );
+            coords3[0] = xf + shift + 1; 
+            coords3[1] = yf + shift + 1;
+            coords3[2] = xf + shift + elem_size; 
+            coords3[3] = yf + shift + 1;
+            coords3[4] = xf + (ts - 1)/2 + 1; 
+            coords3[5] = yf + shift + elem_size;
             draw_polygon(dr, coords3, 3, color, color);
             break;
         case WEST:
@@ -3295,14 +3800,12 @@ static void draw_segment(
             elem_size = ts*6/10 + 1;
             shift = max((ts - elem_size - 1)/2, 3);
             elem_size = ts - 1 - 2*shift;
-            memcpy(coords3,
-              (int[]) {
-                xf + shift + 1,         yf + (ts - 1)/2 + 1,
-                xf + shift + elem_size, yf + shift + 1,
-                xf + shift + elem_size, yf + shift + elem_size
-              },
-              sizeof(*coords3)*6
-            );
+            coords3[0] = xf + shift + 1; 
+            coords3[1] = yf + (ts - 1)/2 + 1;
+            coords3[2] = xf + shift + elem_size; 
+            coords3[3] = yf + shift + 1;
+            coords3[4] = xf + shift + elem_size; 
+            coords3[5] = yf + shift + elem_size;
             draw_polygon(dr, coords3, 3, color, color);
             break;
         case ONE:
@@ -3312,15 +3815,14 @@ static void draw_segment(
             elem_size = ts*6/10 + 1;
             shift = max((ts - elem_size - 1)/2, 3);
             elem_size = ts - 1 - 2*shift;
-            memcpy(coords4,
-              (int[]) {
-                xf + (ts - 1)/2 + 1,    yf + shift + 1,
-                xf + shift + elem_size, yf + (ts - 1)/2 + 1,
-                xf + (ts - 1)/2 + 1,    yf + shift + elem_size,
-                xf + shift + 1,         yf + (ts - 1)/2 + 1,
-             },
-              sizeof(*coords4)*8
-            );
+            coords4[0] = xf + (ts - 1)/2 + 1; 
+            coords4[1] = yf + shift + 1;
+            coords4[2] = xf + shift + elem_size; 
+            coords4[3] = yf + (ts - 1)/2 + 1;
+            coords4[4] = xf + (ts - 1)/2 + 1; 
+            coords4[5] = yf + shift + elem_size;
+            coords4[6] = xf + shift + 1; 
+            coords4[7] = yf + (ts - 1)/2 + 1;
             draw_polygon(dr, coords4, 4, color, color);
             break;
         case INNER:
@@ -3350,18 +3852,21 @@ Parameters:
   cursor: true if cursor is to be shown in the cell;
   error: true if error is to be shown in the cell;
   update: true if draw_update() function is to be executed for the cell;
-  flash: true if flash is under way.
+  drag: true if drag is underway;
+  clear: true if drag clears cells (disregarded if drag == false);
+  conf: type of segment (-1..6) to draw during drag  (disregarded if 
+drag == false or clear == true);
+  flash: true if flash is underway.
 */
 static void draw_cell(
   drawing *dr, const game_state *state, int xc, int yc, 
   int tilesize, int x0pt, int y0pt, bool cursor, bool error, bool update,
-  bool flash
+  bool drag, bool clear, enum Configuration conf, bool flash
 )
 {
     int const ts = tilesize;
     int i, j, color_bg, coords3[6];
-    int cell_state = state->grid_state [yc][xc];
-    
+    int cell_state = ((drag && ! clear) ? conf : state->grid_state [yc][xc]);
     
     // empty
     if (cell_state == UNDEF) {
@@ -3377,38 +3882,28 @@ static void draw_cell(
         else color_bg = COL_OCCUP;
         draw_segment(
           dr, cell_state, ts, x0pt + ts*xc, y0pt + ts*yc, 
-          (! error ? COL_SEGMENT : COL_ERROR), 
-          (error && cell_state == 0 ? COL_ERROR : color_bg)
+          (! error ? (! drag ? COL_SEGMENT : COL_DRAG) : COL_ERROR), 
+          (error && cell_state == OCCUP ? COL_ERROR : color_bg)
         );
     }
     // cursor
     if (cursor) {
-        memcpy(coords3,
-          (int[]) {
-          x0pt + ts*xc + 1,       y0pt + ts*yc + 1,
-          x0pt + ts*xc + 5*ts/10, y0pt + ts*yc + 1,
-          x0pt + ts*xc + 1,       y0pt + ts*yc + 5*ts/10
-          },
-          sizeof(*coords3)*6
-        );
+        coords3[0] = x0pt + ts*xc + 1; 
+        coords3[1] = y0pt + ts*yc + 1;
+        coords3[2] = x0pt + ts*xc + 5*ts/10; 
+        coords3[3] = y0pt + ts*yc + 1;
+        coords3[4] = x0pt + ts*xc + 1; 
+        coords3[5] = y0pt + ts*yc + 5*ts/10;
         draw_polygon(dr, coords3, 3, COL_HIGHLIGHT, COL_HIGHLIGHT);
     }
-    // initially disclosed: thick/colored border
+    // initially disclosed: thick border
     if ((state->init_state->init)[yc][xc] > -2) {
         draw_rect_outline(
-          dr, x0pt + ts*xc + 1, y0pt + ts*yc + 1, ts - 1, ts - 1, 
-          (
-            (state->init_state->init)[yc][xc] == OCCUP ? 
-            COL_OCCUP_FRAME : COL_GRID
-          )
+          dr, x0pt + ts*xc + 1, y0pt + ts*yc + 1, ts - 1, ts - 1, COL_GRID
         );
         if (ts > 22) {
             draw_rect_outline(
-              dr, x0pt + ts*xc + 2, y0pt + ts*yc + 2, ts - 3, ts - 3, 
-              (
-                (state->init_state->init)[yc][xc] == OCCUP ? 
-                COL_OCCUP_FRAME : COL_GRID
-              )
+              dr, x0pt + ts*xc + 2, y0pt + ts*yc + 2, ts - 3, ts - 3, COL_GRID
             );
         }
     }
@@ -3431,7 +3926,7 @@ The function calculates the following elements of struct state:
   **grid_state_err,
   *rows_err, 
   *cols_err,
-  *ships_err,
+  ships_err,
   *ships_state.
 
 */
@@ -3452,7 +3947,7 @@ static void validation(game_state *state, bool *solved)
         state->rows_err[i] = false;
     }
     for (j = 0; j < w; j++) state->cols_err[j] = false;
-    *state->ships_err = false;
+    state->ships_err = false;
     for (i = 0; i < max_ship; i++) distr[i] = 0;
     for (i = 0; i < ns; i++) state->ships_state[i] = false;
     *solved = true;
@@ -3460,7 +3955,8 @@ static void validation(game_state *state, bool *solved)
     // neighbor consistency
     for (i = 0; i < h; i++) {
         for (j = 0; j < w; j++) {
-            // diagonals
+        
+            // no diagonal neighbors
             for (k = -1; k <= 1; k += 2) {
                 for (l = -1; l <= 1; l += 2) {
                    if (
@@ -3472,283 +3968,170 @@ static void validation(game_state *state, bool *solved)
                     }
                 }
             }
-            // up/down/left/right
-            switch (grid_state[i][j]) {
-                case VACANT:
-                    if (
-                      0 <= i-1 && (
-                        grid_state[i-1][j] == NORTH ||
-                        grid_state[i-1][j] == INNER && 
-                        (
-                          0 <= i-2 && grid_state[i-2][j] >= 0        ||
-                          0 <= j-1 && grid_state[i-1][j-1] == VACANT ||
-                          j+1 < w  && grid_state[i-1][j+1] == VACANT
-                        )
-                      )
-                      ||
-                      i+1 < h && (
-                        grid_state[i+1][j] == SOUTH ||
-                        grid_state[i+1][j] == INNER && 
-                        (
-                          i+2 < h  && grid_state[i+2][j] >= 0        ||
-                          0 <= j-1 && grid_state[i+1][j-1] == VACANT ||
-                          j+1 < w  && grid_state[i+1][j+1] == VACANT
-                        )
-                      )
-                      ||
-                      0 <= j-1 && (
-                        grid_state[i][j-1] == WEST ||
-                        grid_state[i][j-1] == INNER && (
-                          0 <= j-2 && grid_state[i][j-2] >= 0        ||
-                          0 <= i-1 && grid_state[i-1][j-1] == VACANT ||
-                          i+1 < h  && grid_state[i+1][j-1] == VACANT
-                        )
-                      )
-                      ||
-                      j+1 < w && (
-                        grid_state[i][j+1] == EAST ||
-                        grid_state[i][j+1] == INNER  && (
-                          j+2 < w  && grid_state[i][j+2] >= 0        ||
-                          0 <= i-1 && grid_state[i-1][j+1] == VACANT ||
-                          i+1 < h  && grid_state[i+1][j+1] == VACANT
-                        )
-                      )
-                      ||
-                      (i == 0 || i == h-1) && (
-                        0 <= j-1 && grid_state[i][j-1] == INNER
-                        ||
-                        j+1 < w  && grid_state[i][j+1] == INNER
-                      )
-                      ||
-                      (j == 0 || j == w-1) && (
-                        0 <= i-1 && grid_state[i-1][j] == INNER
-                        ||
-                        i+1 < h  && grid_state[i+1][j] == INNER
-                      )
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case OCCUP:
-                    if (
-                      0 <= i-1 && ! (
-                        grid_state[i-1][j] == UNDEF  ||
-                        grid_state[i-1][j] == VACANT ||
-                        grid_state[i-1][j] == OCCUP  ||
-                        grid_state[i-1][j] == NORTH  ||
-                        grid_state[i-1][j] == INNER 
-                      )
-                      ||
-                      i+1 < h && ! (
-                        grid_state[i+1][j] == UNDEF  ||
-                        grid_state[i+1][j] == VACANT ||
-                        grid_state[i+1][j] == OCCUP  ||
-                        grid_state[i+1][j] == SOUTH  ||
-                        grid_state[i+1][j] == INNER 
-                      ) 
-                      ||
-                      0 <= j-1 && ! (
-                        grid_state[i][j-1] == UNDEF  ||
-                        grid_state[i][j-1] == VACANT ||
-                        grid_state[i][j-1] == OCCUP  ||
-                        grid_state[i][j-1] == WEST   ||
-                        grid_state[i][j-1] == INNER 
-                      )
-                      ||
-                      j+1 < w && ! (
-                        grid_state[i][j+1] == UNDEF  ||
-                        grid_state[i][j+1] == VACANT ||
-                        grid_state[i][j+1] == OCCUP  ||
-                        grid_state[i][j+1] == EAST   ||
-                        grid_state[i][j+1] == INNER 
-                      )
-                     ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case NORTH:
-                    if (
-                      0 <= i-1 && grid_state[i-1][j] >= 0 
-                      ||
-                      i+1 < h && ! (
-                        grid_state[i+1][j] == UNDEF ||
-                        grid_state[i+1][j] == OCCUP ||
-                        grid_state[i+1][j] == SOUTH ||
-                        grid_state[i+1][j] == INNER 
-                      )
-                      ||
-                      0 <= j-1 && grid_state[i][j-1] >= 0 
-                      ||
-                      j+1 < w  && grid_state[i][j+1] >= 0 
-                      ||
-                      i == h-1 
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case EAST:
-                    if (
-                      0 <= i-1 && grid_state[i-1][j] >= 0 
-                      ||
-                      i+1 < h && grid_state[i+1][j] >= 0 
-                      ||
-                      0 <= j-1 && ! (
-                        grid_state[i][j-1] == UNDEF ||
-                        grid_state[i][j-1] == OCCUP ||
-                        grid_state[i][j-1] == WEST  ||
-                        grid_state[i][j-1] == INNER 
-                      )
-                      ||
-                      j+1 < w && grid_state[i][j+1] >= 0 
-                      ||
-                      j == 0 
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case SOUTH:
-                    if (
-                      0 <= i-1 &&  ! (
-                        grid_state[i-1][j] == UNDEF ||
-                        grid_state[i-1][j] == OCCUP ||
-                        grid_state[i-1][j] == NORTH ||
-                        grid_state[i-1][j] == INNER 
-                      )
-                      ||
-                      i+1 < h && grid_state[i+1][j] >= 0 
-                      ||
-                      0 <= j-1 && grid_state[i][j-1] >= 0 
-                      ||
-                      j+1 < w && grid_state[i][j+1] >= 0 
-                      ||
-                      i == 0 
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case WEST:
-                    if (
-                      0 <= i-1 && grid_state[i-1][j] >= 0 
-                      ||
-                      i+1 < h && grid_state[i+1][j] >= 0 
-                      ||
-                      0 <= j-1 && grid_state[i][j-1] >= 0 
-                      ||
-                      j+1 < w && ! (
-                        grid_state[i][j+1] == UNDEF ||
-                        grid_state[i][j+1] == OCCUP ||
-                        grid_state[i][j+1] == EAST  ||
-                        grid_state[i][j+1] == INNER 
-                      )
-                      ||
-                      j == w-1 
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case ONE:
-                    if (
-                      0 <= i-1 && grid_state[i-1][j] >= 0 
-                      ||
-                      i+1 < h && grid_state[i+1][j] >= 0 
-                      ||
-                      0 <= j-1 && grid_state[i][j-1] >= 0 
-                      ||
-                      j+1 < w && grid_state[i][j+1] >= 0 
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    }
-                    break;
-                case INNER:
-                    if ( 
-                      0 <= i-1 && ! (
-                        grid_state[i-1][j] == UNDEF  ||
-                        grid_state[i-1][j] == VACANT ||
-                        grid_state[i-1][j] == OCCUP  ||
-                        grid_state[i-1][j] == NORTH  ||
-                        grid_state[i-1][j] == INNER 
-                      )
-                      ||
-                      i == 0 && grid_state[i+1][j] >= 0
-                      ||
-                      i+1 < h && ! (
-                        grid_state[i+1][j] == UNDEF  ||
-                        grid_state[i+1][j] == VACANT ||
-                        grid_state[i+1][j] == OCCUP  ||
-                        grid_state[i+1][j] == SOUTH  ||
-                        grid_state[i+1][j] == INNER 
-                      ) 
-                      ||
-                      i == h-1 && grid_state[i-1][j] >= 0
-                      ||
-                      0 <= j-1 && ! (
-                        grid_state[i][j-1] == UNDEF  ||
-                        grid_state[i][j-1] == VACANT ||
-                        grid_state[i][j-1] == OCCUP  ||
-                        grid_state[i][j-1] == WEST   ||
-                        grid_state[i][j-1] == INNER 
-                      )
-                      ||
-                      j == 0 && grid_state[i][j+1] >= 0
-                      ||
-                      j+1 < w && ! (
-                        grid_state[i][j+1] == UNDEF  ||
-                        grid_state[i][j+1] == VACANT ||
-                        grid_state[i][j+1] == OCCUP  ||
-                        grid_state[i][j+1] == EAST   ||
-                        grid_state[i][j+1] == INNER 
-                      )
-                      ||
-                      j == w-1 && grid_state[i][j-1] >= 0
-                      ||
-                      (i == 0 || i == h-1) && (
-                        0 <= j-1 && grid_state[i][j-1] == VACANT
-                        ||
-                        j+1 < w  && grid_state[i][j+1] == VACANT
-                        ||
-                        j == 0 || j == w-1
-                      )
-                      ||
-                      (j == 0 || j == w-1) && (
-                        0 <= i-1 && grid_state[i-1][j] == VACANT
-                        ||
-                        i+1 < h  && grid_state[i+1][j] == VACANT
-                      )
-                      ||
-                      0 <= i-1 && 0 <= j-1 && grid_state[i-1][j] == VACANT 
-                        && grid_state[i][j-1] == VACANT ||
-                      0 <= i-1 && j+1 < w &&  grid_state[i-1][j] == VACANT
-                        && grid_state[i][j+1] == VACANT ||
-                      i+1 < h  && 0 <= j-1 && grid_state[i+1][j] == VACANT
-                        && grid_state[i][j-1] == VACANT ||
-                      i+1 < h  && j+1 < w &&  grid_state[i+1][j] == VACANT
-                        && grid_state[i][j+1] == VACANT 
-                      ||
-                      0 <= i-1 && i+1 < h && ( 
-                        grid_state[i-1][j] == VACANT && 
-                        grid_state[i+1][j] >= 0         ||
-                        grid_state[i-1][j] >= 0      && 
-                        grid_state[i+1][j] == VACANT  
-                      )
-                      ||       
-                      0 <= j-1 && j+1 < w && ( 
-                        grid_state[i][j-1] == VACANT && 
-                        grid_state[i][j+1] >= 0         ||
-                        grid_state[i][j-1] >= 0      && 
-                        grid_state[i][j+1] == VACANT  
-                      )       
-                    ) {
-                        grid_state_err[i][j] = true;
-                        *solved = false;
-                    } 
+            
+            // check neighbors of VACANT 
+            #define CASE_VACANT(i, j, h, w, conf, mat, m, m_err)            \
+                if (mat((i), (j), m, h, w) == VACANT && (                   \
+                  0 <= (i)-1 && (                                           \
+                    mat((i)-1, (j), m, h, w) == conf ||                     \
+                    mat((i)-1, (j), m, h, w) == INNER &&                    \
+                    (                                                       \
+                      0 <= (i)-2 && mat((i)-2, (j), m, h, w) >= 0        || \
+                      0 <= (j)-1 && mat((i)-1, (j)-1, m, h, w) == VACANT || \
+                      (j)+1 < w  && mat((i)-1, (j)+1, m, h, w) == VACANT    \
+                    )                                                       \
+                  )                                                         \
+                  ||                                                        \
+                  (i) == 0 && (                                             \
+                    0 <= (j)-1 && mat((i), (j)-1, m, h, w) == INNER         \
+                    ||                                                      \
+                    (j)+1 < w  && mat((i), (j)+1, m, h, w) == INNER         \
+                  )                                                         \
+                )) {                                                        \
+                    mat((i), (j), m_err, h, w) = true;                      \
+                    *solved = false;                                        \
+                }
+            // apply the above with rotation symmetry transformations
+            CASE_VACANT(
+              i,     j,     h, w, NORTH, MAT_0, grid_state, grid_state_err
+            );  
+            CASE_VACANT(
+              w-1-j, i,     w, h, EAST,  MAT_1, grid_state, grid_state_err
+            );  
+            CASE_VACANT(
+              h-1-i, w-1-j, h, w, SOUTH, MAT_2, grid_state, grid_state_err
+            );   
+            CASE_VACANT(
+              j,     h-1-i, w, h, WEST,  MAT_3, grid_state, grid_state_err
+            );  
+
+
+            // check neighbors of OCCUP 
+            #define CASE_OCCUP(i, j, h, w, conf, mat, m, m_err)  \
+                if (mat((i), (j), m, h, w) == OCCUP && (         \
+                  0 <= (i)-1 && ! (                              \
+                      mat((i)-1, (j), m, h, w) == conf   ||      \
+                      mat((i)-1, (j), m, h, w) == UNDEF  ||      \
+                      mat((i)-1, (j), m, h, w) == VACANT ||      \
+                      mat((i)-1, (j), m, h, w) == OCCUP  ||      \
+                      mat((i)-1, (j), m, h, w) == INNER          \
+                  )                                              \
+                )) {                                             \
+                    mat((i), (j), m_err, h, w) = true;           \
+                    *solved = false;                             \
+                }
+            CASE_OCCUP(
+              i,     j,     h, w, NORTH, MAT_0, grid_state, grid_state_err
+            );  
+            CASE_OCCUP(
+              w-1-j, i,     w, h, EAST,  MAT_1, grid_state, grid_state_err
+            );  
+            CASE_OCCUP(
+              h-1-i, w-1-j, h, w, SOUTH, MAT_2, grid_state, grid_state_err
+            );   
+            CASE_OCCUP(
+              j,     h-1-i, w, h, WEST,  MAT_3, grid_state, grid_state_err
+            );  
+
+
+            // check neighbors of NORTH, SOUTH, EAST, WEST
+            #define CASE_NSEW(i, j, h, w, conf, mat, m, m_err)        \
+                if (mat((i), (j), m, h, w) == conf && (               \
+                  0 <= (i)-1 && mat((i)-1, (j), m, h, w) >= 0         \
+                  ||                                                  \
+                  (i)+1 < h && ! (                                    \
+                    mat((i)+1, (j), m, h, w) == (conf + 1) % 4 + 1 || \
+                    mat((i)+1, (j), m, h, w) == UNDEF ||              \
+                    mat((i)+1, (j), m, h, w) == OCCUP ||              \
+                    mat((i)+1, (j), m, h, w) == INNER                 \
+                  )                                                   \
+                  ||                                                  \
+                  0 <= (j)-1 && mat((i), (j)-1, m, h, w) >= 0         \
+                  ||                                                  \
+                  (j)+1 < w  && mat((i), (j)+1, m, h, w) >= 0         \
+                  ||                                                  \
+                  (i) == h-1                                          \
+                )) {                                                  \
+                    mat((i), (j), m_err, h, w) = true;                \
+                    *solved = false;                                  \
+                }
+            CASE_NSEW(
+              i,     j,     h, w, NORTH, MAT_0, grid_state, grid_state_err
+            );  
+            CASE_NSEW(
+              w-1-j, i,     w, h, EAST,  MAT_1, grid_state, grid_state_err
+            );  
+            CASE_NSEW(
+              h-1-i, w-1-j, h, w, SOUTH, MAT_2, grid_state, grid_state_err
+            );   
+            CASE_NSEW(
+              j,     h-1-i, w, h, WEST,  MAT_3, grid_state, grid_state_err
+            );  
+                
+                
+            // check neighbors of ONE
+            if (grid_state[i][j] == ONE && ( 
+                0 <= i-1 && grid_state[i-1][j] >= 0 
+                ||
+                i+1 < h && grid_state[i+1][j] >= 0 
+                ||
+                0 <= j-1 && grid_state[i][j-1] >= 0 
+                ||
+                j+1 < w && grid_state[i][j+1] >= 0 
+            )) {
+                grid_state_err[i][j] = true;
+                *solved = false;
             }
+                    
+                
+            // check neighbors of INNER 
+            #define CASE_INNER(i, j, h, w, conf, mat, m, m_err)      \
+                if (mat((i), (j), m, h, w) == INNER && (             \
+                  0 <= (i)-1 && ! (                                  \
+                    mat((i)-1, (j), m, h, w) == conf  ||             \
+                    mat((i)-1, (j), m, h, w) == UNDEF  ||            \
+                    mat((i)-1, (j), m, h, w) == VACANT ||            \
+                    mat((i)-1, (j), m, h, w) == OCCUP  ||            \
+                    mat((i)-1, (j), m, h, w) == INNER                \
+                  )                                                  \
+                  ||                                                 \
+                  (i) == 0 && (                                      \
+                    mat((i)+1, (j), m, h, w) >= 0                    \
+                    ||                                               \
+                    0 <= (j)-1 && mat((i), (j)-1, m, h, w) == VACANT \
+                    ||                                               \
+                    (j)+1 < w  && mat((i), (j)+1, m, h, w) == VACANT \
+                    ||                                               \
+                    (j) == 0 || (j) == w-1                           \
+                  )                                                  \
+                  ||                                                 \
+                  0 <= (i)-1 && 0 <= (j)-1 &&                        \
+                  mat((i)-1, (j), m, h, w) == VACANT &&              \
+                  mat((i), (j)-1, m, h, w) == VACANT                 \
+                  ||                                                 \
+                  0 <= (i)-1 && (i)+1 < h && (                       \
+                    mat((i)-1, (j), m, h, w) == VACANT &&            \
+                    mat((i)+1, (j), m, h, w) >= 0         ||         \
+                    mat((i)-1, (j), m, h, w) >= 0      &&            \
+                    mat((i)+1, (j), m, h, w) == VACANT               \
+                  )                                                  \
+                )) {                                                 \
+                    mat((i), (j), m_err, h, w) = true;               \
+                    *solved = false;                                 \
+                }
+            CASE_INNER(
+              i,     j,     h, w, NORTH, MAT_0, grid_state, grid_state_err
+            );  
+            CASE_INNER(
+              w-1-j, i,     w, h, EAST,  MAT_1, grid_state, grid_state_err
+            );  
+            CASE_INNER(
+              h-1-i, w-1-j, h, w, SOUTH, MAT_2, grid_state, grid_state_err
+            );   
+            CASE_INNER(
+              j,     h-1-i, w, h, WEST,  MAT_3, grid_state, grid_state_err
+            );  
+
         }
     }
     
@@ -3788,58 +4171,21 @@ static void validation(game_state *state, bool *solved)
     }    
     
     
-    // ships consistency (determine completed ships that start with NORTH
-    // or WEST and end with SOUTH or EAST, also ONE-ships; 
-    // then determine distribution of sizes)
-    for (i = 0; i < h; i++) {
-        for (j = 0; j < w; j++) {
-            if (i < h-1 && grid_state[i][j] == NORTH) {
-                k = 0;
-                do {k++;} while (i+k < h-1 && grid_state[i+k][j] == INNER); 
-                if (grid_state[i+k][j] == SOUTH) {
-                    if (
-                      k+1 <= max_ship && 
-                      distr[k] < state->init_state->ships_distr [k]
-                    ) (distr[k])++;
-                    else {
-                        *state->ships_err = true;
-                        *solved = false;
-                        break;
-                    }
-                }
-            }
-            else if (j < w-1 && grid_state[i][j] == WEST) {
-                k = 0;
-                do {k++;} while (j+k < w-1 && grid_state[i][j+k] == INNER); 
-                if (grid_state[i][j+k] == EAST) {
-                    if (
-                      k+1 <= max_ship && 
-                      distr[k] < state->init_state->ships_distr [k]
-                    ) (distr[k])++;
-                    else {
-                        *state->ships_err = true;
-                        *solved = false;
-                        break;
-                    }
-                }
-            }
-            else if (grid_state[i][j] == ONE) {
-                if (distr[0] < state->init_state->ships_distr [0]) {
-                    (distr[0])++;
-                }
-                else {
-                    *state->ships_err = true;
-                    *solved = false;
-                    break;
-                }
+    // ships consistency (only the ships are found that are searched for)
+    state->ships_err = compl_ships_distr(h, w, grid_state, max_ship, distr);
+    if (! state->ships_err) {
+        for (k = 0; k < max_ship; k++) {
+            if (distr[k] > state->init_state->ships_distr[k]) {
+                state->ships_err = true;
+                break;
             }
         }
-        if (*state->ships_err) break;
     }
-    
-    
+    if (state->ships_err) *solved = false;
+
+   
     // mark ships done
-    if (! *state->ships_err) {
+    if (! state->ships_err) {
         for (i = 0; i < ns; i++) {
             if (distr [state->init_state->ships [i] - 1] > 0) {
                 state->ships_state[i] = true;
