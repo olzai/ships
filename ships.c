@@ -16,6 +16,8 @@ the specific state of the cell;
     (b) right drag marks multiple cells vacant or clears.
   3. For the field 7x7, 2 is now the minimum ship size (in version 1 it was 1).
   4. The code is optimized.
+Version 3, 20250525
+  Bug fixed: left drag is disabled.
 
 
 Licence
@@ -1101,6 +1103,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         sprintf(move, "d%dy%dx%dy%dx%d", ui->clear, 
           ui->drag_sy, ui->drag_sx, ui->drag_ey, ui->drag_ex
         );
+        ui->drag_sy = ui->drag_sx = ui->drag_ey = ui->drag_ex = -1;
         return dupstr(move);
     }
     
@@ -1120,7 +1123,7 @@ static char *interpret_move(const game_state *state, game_ui *ui,
     } 
     
         
-    //-*-* set state with mouse click
+    //-*-* set state with left mouse click
     if (button == LEFT_BUTTON && INGRID(y, x, yg, xg, h, w, ts)) {
         yy = GRID_YX(y, yg, ts);  xx = GRID_YX(x, xg, ts);
         
@@ -1129,11 +1132,8 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         
         //-*-* switch cell state
         if (init[yy][xx] == UNDEF) {
-            if (grid[yy][xx] == UNDEF) {
-                if      (button == RIGHT_BUTTON) conf = VACANT;
-                else if (button == LEFT_BUTTON)  conf = OCCUP;
-            }
-            else                                 conf = UNDEF;
+            if (grid[yy][xx] == UNDEF) conf = OCCUP;
+            else                       conf = UNDEF;
             sprintf(move, "y%dx%dz%d", yy, xx, conf);
             return dupstr(move);
         }
