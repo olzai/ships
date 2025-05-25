@@ -26,7 +26,7 @@
 
 This is a documentation of the Ships game, which is based on the package of \q{\i{Simon Tatham's Portable Puzzle Collection}}. Find the hidden ships.
 
-\copyright This manual is copyright 2024 Oleg Zaitsev. All rights
+\copyright This manual is copyright 2025 Oleg Zaitsev. All rights
 reserved. You may distribute this documentation under the MIT licence.
 See \k{licence} for the licence text in full. This game was developed using the package of \q{\i{Simon Tatham's Portable Puzzle Collection}} (\W{https://www.chiark.greenend.org.uk/~sgtatham/puzzles/}\cw{www.chiark.greenend.org.uk/~sgtatham/puzzles}). This software is \e{not} part of the \q{Collection}.
 
@@ -107,7 +107,7 @@ These parameters are available from the \q{Custom...} option on the
 
 \A{licence} \I{MIT licence}\ii{Licence}
 
-This software is \i{copyright} 2024 Oleg Zaitsev.
+This software is \i{copyright} 2025 Oleg Zaitsev.
 
 This software was developed using the package of \q{\i{Simon Tatham's Portable Puzzle Collection}} (\W{https://www.chiark.greenend.org.uk/~sgtatham/puzzles/}\cw{www.chiark.greenend.org.uk/~sgtatham/puzzles}). This software is \e{not} part of the \q{Collection}.
 
@@ -135,5 +135,5 @@ SOFTWARE.
 \IM{MIT licence} licence, MIT
 
 
-\versionid The Ships Game, version 2, 20241224
+\versionid The Ships Game, version 3, 20250525
 
