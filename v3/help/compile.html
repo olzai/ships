@@ -1,0 +1,46 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+"http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=US-ASCII">
+<title>How to compile the code</title>
+<link rel="previous" href="index.html">
+<link rel="ToC" href="index.html">
+<link rel="up" href="index.html">
+<link rel="index" href="docindex.html">
+<link rel="next" href="ships.html">
+</head>
+<body>
+<p><a href="index.html">Previous</a> | <a href="index.html">Contents</a> | <a href="docindex.html">Index</a> | <a href="ships.html">Next</a></p>
+<h1><a name="C1"></a>Chapter 1: How to <a name="i0"></a>compile the code</h1>
+<p>
+The code is written in <em>C</em>. Because it is based on the package of &#8216;<a name="i1"></a>Simon Tatham's Portable Puzzle Collection&#8217;, it must be compiled as if it were a part of the package. Specifically, in <a name="i2"></a>Linux do the following:
+</p>
+<ol><li>
+Copy the file <code>ships.c</code> to the source directory of the <a name="i3"></a>&#8216;Collection&#8217;.
+</li>
+<li>
+Add the game specification to the <code>CMakeLists.txt</code> file:
+<pre><code>puzzle(ships
+  DISPLAYNAME "Ships"
+  DESCRIPTION "Ship-finding puzzle"
+  OBJECTIVE "Find the hidden ships."
+)
+</code></pre>
+
+</li>
+<li>
+Execute the commands:
+<pre><code>cmake -S &lt;source_directory&gt;
+cmake --build &lt;build_directory&gt;
+</code></pre>
+
+</li>
+</ol>
+<p>
+To run the game, execute the file <code>ships</code> in the <code>&lt;build_directory&gt;</code>.
+</p>
+
+<hr><address>
+[The Ships Game, version 3, 20250525]</address></body>
+</html>
