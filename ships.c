@@ -23,7 +23,7 @@ Version 3, 20250525
 Licence
 -------
 
-       This software is copyright 2024 Oleg Zaitsev.
+       This software is copyright 2025 Oleg Zaitsev.
 
        This software was developed using the package
        of `Simon Tatham's Portable Puzzle Collection'
